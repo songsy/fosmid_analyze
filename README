@@ -1,0 +1,8 @@
+README
+2014/06/26: begin to analyze additional fosmid pools
+Folder: /home/songsy/script/fosmid_analyze/
+1. python find_clone.py #.mpileup #.bam index > #.log
+2. python write_poststep.py sample_name
+3. python fosmid_clone_stats.py sample_name
+4. call whole genome snp: process-SNP-calling-HC.py
+5. python process-pool-SNP-calling-HC.py —sample —pool
