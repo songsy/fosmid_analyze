@@ -38,14 +38,11 @@ def walk_through_NA19240():
 
 class VcfIterator:
   def __init__(self, filename):
-    self.file = open(filename, "r")
-  
+    self.file = open(filename, "r")  
   def __iter__(self):
-    return self
-  
+    return self  
   def __next__(self):
-  	return self.next()
-  	
+  	return self.next()  	
   def next(self):
     line = next(self.file)
     while line[0] == "#":
@@ -57,7 +54,7 @@ class VcfIterator:
     for alt_a in fields[4].split(","):
       alleles.append(alt_a)
     geno = fields[9][:3]
-    phased = geno[1]
+    phased = geno[1]=='|'
     return (chrom, pos, tuple(alleles), (int(geno[0]), int(geno[2])), phased)
 
 if __name__=="__main__":

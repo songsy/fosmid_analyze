@@ -85,7 +85,6 @@ def fosmid_replace_phase3(phase3_file,locus):
 					else:
 						print 'different',pos,allele,GT,locus[find]
 						different +=1
-						f_out1.write('\t'.join(line)+'\n')
 						if locus[find][1][0]=='1' and locus[find][1][1]=='0':
 							line[4]=locus[find][2][0]
 							line[9]='|'.join(locus[find][1])

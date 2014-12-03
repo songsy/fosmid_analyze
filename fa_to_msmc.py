@@ -48,7 +48,7 @@ def read_hap_fa_snp(file_list,name):
 			break
 		if lines[0][0]==">":
 			chr = lines[0].replace(">chr","")
-			f_out = open("msmc/NA19240/"+chr+"_"+name+".txt","w")
+			f_out = open("msmc/YRI/"+chr+"_"+name+".txt","w")
 			for i in range(len(lines)-1):
 				assert lines[i]==lines[i+1]
 			line_number = 0
@@ -61,6 +61,6 @@ def read_hap_fa_snp(file_list,name):
 					print >>f_out,"%s\t%s\t" %(chr,i)
 
 if __name__=="__main__":	
-	file_list = ["phased-genomes/NA19240_hap1.fa.gz","phased-genomes/NA19240_hap2.fa.gz"]
+	file_list = ["phased-genomes/NA19240_chrX_hap1.fa.gz","phased-genomes/NA19240_chrX_hap2.fa.gz"]
 	read_hap_fa_snp(file_list,"NA19240_old_fosmid_phase")
 
