@@ -139,35 +139,339 @@ def compare_phasing(SNP,switch_distance,switch_length):
 	print chr,tot,opposite,switch_error,len(switch_distance),len(switch_length),np.mean(switch_distance),np.mean(switch_length)
 	return switch_distance,switch_length,tot,opposite,switch_error
 
+def compare_phasing_v2(SNP,switch_point_length,switch_distance,switch_length):
+	list = SNP.index
+	tot = 0
+	opposite = 0
+	is_switch = []
+	switch = []
+	switch_position = []
+	for j in range(len(list)):
+		if SNP["phase1"][list[j]]!=() and SNP["phase2"][list[j]]!=():
+			tot +=1
+			if SNP["phase1"][list[j]]!=SNP["phase2"][list[j]]:
+#				print list[j],SNP["phase1"][list[j]],SNP["phase2"][list[j]]
+				opposite +=1
+				is_switch.append(1)
+				switch.append(0)
+				switch_position.append(list[j])
+			else:
+				is_switch.append(0)
+				switch.append(0)
+				switch_position.append(list[j])
+	k = 0
+	s = 0
+	e = 0
+	switch_error = 0
+	last_error_pos = None
+	start = -1
+	if is_switch.count(0)>=is_switch.count(1):
+		for k in range(len(is_switch)):
+			if is_switch[k]==1:
+				if start ==-1:
+					start = k	
+			else:
+				if start !=-1:
+					end = k
+					switch_error +=1
+#					print start,end-1,switch_position[end-1],switch_position[start],last_error_pos
+					switch_length.append(int(switch_position[end-1])-int(switch_position[start]))
+					if end==start:
+						switch_point_length.append(1)
+					else:
+						switch_point_length.append(end-start)
+					if last_error_pos is None:
+						last_error_pos = int(switch_position[start])
+					else:
+						switch_distance.append(int(switch_position[start])-last_error_pos)
+						last_error_pos = int(switch_position[start])
+					start = -1
+		if is_switch[k]==1:
+			if start !=-1:
+				end = k
+				switch_error +=1
+				switch_length.append(int(switch_position[end-1])-int(switch_position[start]))
+				if end==start:
+					switch_point_length.append(1)
+				else:
+					switch_point_length.append(end-start)
+				if last_error_pos is None:
+					last_error_pos = int(switch_position[start])
+				else:
+					switch_distance.append(int(switch_position[start])-last_error_pos)
+					last_error_pos = int(switch_position[start])
+	else:
+		for k in range(len(is_switch)):
+			if is_switch[k]==0:
+				if start ==-1:
+					start = k	
+			else:
+				if start !=-1:
+					end = k
+#					print start,end-1,switch_position[end-1],switch_position[start],last_error_pos
+					switch_error +=1
+					switch_length.append(int(switch_position[end-1])-int(switch_position[start]))
+					if end==start:
+						switch_point_length.append(1)
+					else:
+						switch_point_length.append(end-start)
+					if last_error_pos is None:
+						last_error_pos = int(switch_position[start])
+					else:
+						switch_distance.append(int(switch_position[start])-last_error_pos)
+						last_error_pos = int(switch_position[start])
+					start = -1
+		if is_switch[k]==0:
+			if start !=-1:
+				end = k
+				switch_error +=1
+				switch_length.append(int(switch_position[end-1])-int(switch_position[start]))
+				if end==start:
+					switch_point_length.append(1)
+				else:
+					switch_point_length.append(end-start)
+				if last_error_pos is None:
+					last_error_pos = int(switch_position[start])
+				else:
+					switch_distance.append(int(switch_position[start])-last_error_pos)
+					last_error_pos = int(switch_position[start])
+	print chr,tot,opposite,switch_error,len(switch_distance),len(switch_length),len(switch_point_length),np.mean(switch_distance),np.mean(switch_length),sum(switch_length)/(len(switch_length)-switch_point_length.count(1)),np.mean(switch_point_length),switch_point_length.count(1)
+	return switch_point_length,switch_distance,switch_length,tot,opposite,switch_error
+
+def find_interval(pos,list):
+	left = 0
+	right = len(list)
+	find = -1
+	while right - left >0:
+		midpoint = (right + left)/2
+		if pos < list[midpoint]:
+			right = midpoint
+		elif pos > list[midpoint]:
+			left = midpoint+1
+		elif pos == list[midpoint]:
+			left = midpoint
+			find = midpoint
+			break
+		if pos<list[midpoint] and midpoint!=0:
+			midpoint=midpoint-1
+	return midpoint
+
+def calc_phase_error(is_switch,switch_position):
+	switch_distance = []   # record distance between switch errors
+	switch_length = []  	# record the length of switch errors
+	switch_point_length =[]   # record the number of discordance in each switch
+	k = 0
+	s = 0
+	e = 0
+	last_error_pos = None
+	start = -1
+	switch_error = 0
+	if is_switch.count(0)>=is_switch.count(1):
+		for k in range(len(is_switch)):
+			if is_switch[k]==1:
+				if start ==-1:
+					start = k	
+			else:
+				if start !=-1:
+					end = k
+					switch_error +=1
+#					print start,end-1,switch_position[end-1],switch_position[start],last_error_pos
+					switch_length.append(int(switch_position[end-1])-int(switch_position[start]))
+					if end==start:
+						switch_point_length.append(1)
+					else:
+						switch_point_length.append(end-start)
+					if last_error_pos is None:
+						last_error_pos = int(switch_position[start])
+					else:
+						switch_distance.append(int(switch_position[start])-last_error_pos)
+						last_error_pos = int(switch_position[start])
+					start = -1
+		if is_switch[k]==1:
+			if start !=-1:
+				end = k
+				switch_error +=1
+				switch_length.append(int(switch_position[end-1])-int(switch_position[start]))
+				if end==start:
+					switch_point_length.append(1)
+				else:
+					switch_point_length.append(end-start)
+				if last_error_pos is None:
+					last_error_pos = int(switch_position[start])
+				else:
+					switch_distance.append(int(switch_position[start])-last_error_pos)
+					last_error_pos = int(switch_position[start])
+	else:
+		for k in range(len(is_switch)):
+			if is_switch[k]==0:
+				if start ==-1:
+					start = k	
+			else:
+				if start !=-1:
+					end = k
+#					print start,end-1,switch_position[end-1],switch_position[start],last_error_pos
+					switch_error +=1
+					switch_length.append(int(switch_position[end-1])-int(switch_position[start]))
+					if end==start:
+						switch_point_length.append(1)
+					else:
+						switch_point_length.append(end-start)
+					if last_error_pos is None:
+						last_error_pos = int(switch_position[start])
+					else:
+						switch_distance.append(int(switch_position[start])-last_error_pos)
+						last_error_pos = int(switch_position[start])
+					start = -1
+		if is_switch[k]==0:
+			if start !=-1:
+				end = k
+				switch_error +=1
+				switch_length.append(int(switch_position[end-1])-int(switch_position[start]))
+				if end==start:
+					switch_point_length.append(1)
+				else:
+					switch_point_length.append(end-start)
+				if last_error_pos is None:
+					last_error_pos = int(switch_position[start])
+				else:
+					switch_distance.append(int(switch_position[start])-last_error_pos)
+					last_error_pos = int(switch_position[start])
+	return switch_error,switch_point_length,switch_distance,switch_length
+
+def compare_phasing_prism(prism_file,SNP,switch_point_length,switch_distance,switch_length):
+	block_list_left = []
+	block_list_right = []
+	for i in BedIterator(prism_file):
+		if i[4]!='interleaving' and i[4]!='None,interleave' and i[1]!=i[2]:
+			block_list_left.append(int(i[1]))
+			block_list_right.append(int(i[2]))
+	for i in range(1,len(block_list_left)):
+		assert block_list_left[i]>block_list_left[i-1]
+	list = SNP.index
+	block_index = []
+	for j in range(len(list)):
+		find = find_interval(list[j],block_list_left)
+		try:
+			assert list[j]>=block_list_left[find] and list[j]<=block_list_right[find]
+			block_index.append(find)
+		except AssertionError:
+#			print list[j],find,block_list_left[find],block_list_right[find]
+			block_index.append(-1)
+#	print len(block_index),len(list)
+#	print block_index
+	Switch_error = 0
+	Tot = 0
+	Opposite=0
+	start = True
+	for j in range(len(list)):
+		if block_index[j]==-1:
+			continue
+		if start is True:
+			tot = 0
+			opposite = 0
+			is_switch = []
+			switch = []
+			switch_position = []
+			start = False
+			prev = block_index[j]
+		if block_index[j]!=prev:
+			if tot>1:
+				switch_error,sswitch_point_length,sswitch_distance,sswitch_length=calc_phase_error(is_switch,switch_position)
+				if switch_error!=0:
+					if len(sswitch_length)-sswitch_point_length.count(1)!=0:
+						print block_index[j],tot,opposite,switch_error,len(sswitch_distance),len(sswitch_length),len(sswitch_point_length),np.mean(sswitch_distance),np.mean(sswitch_length),sum(sswitch_length)/(len(sswitch_length)-sswitch_point_length.count(1)),np.mean(sswitch_point_length),sswitch_point_length.count(1)
+					else:
+						print block_index[j],tot,opposite,switch_error,len(sswitch_distance),len(sswitch_length),len(sswitch_point_length),np.mean(sswitch_distance),np.mean(sswitch_length),np.mean(sswitch_point_length),sswitch_point_length.count(1)
+				else:
+					print block_index[j],tot,opposite,switch_error
+				Tot+=tot
+				Opposite+=min(opposite,tot-opposite)
+				Switch_error+=switch_error
+				switch_distance=switch_distance+sswitch_distance
+				switch_length=switch_length+sswitch_length
+				switch_point_length=switch_point_length+sswitch_point_length
+			tot = 0
+			opposite = 0
+			is_switch = []
+			switch = []
+			switch_position = []
+			start = False
+			prev = block_index[j]
+			continue
+		if SNP["phase1"][list[j]]!=() and SNP["phase2"][list[j]]!=():
+			tot +=1
+			if SNP["phase1"][list[j]]!=SNP["phase2"][list[j]]:
+#				print list[j],SNP["phase1"][list[j]],SNP["phase2"][list[j]]
+				opposite +=1
+				is_switch.append(1)
+				switch.append(0)
+				switch_position.append(list[j])
+			else:
+				is_switch.append(0)
+				switch.append(0)
+				switch_position.append(list[j])
+	if tot>1:
+		switch_error,sswitch_point_length,sswitch_distance,sswitch_length=calc_phase_error(is_switch,switch_position)
+		if switch_error!=0:
+			if len(sswitch_length)-sswitch_point_length.count(1)!=0:
+				print block_index[j],tot,opposite,switch_error,len(sswitch_distance),len(sswitch_length),len(sswitch_point_length),np.mean(sswitch_distance),np.mean(sswitch_length),sum(sswitch_length)/(len(sswitch_length)-sswitch_point_length.count(1)),np.mean(sswitch_point_length),sswitch_point_length.count(1)
+			else:
+				print block_index[j],tot,opposite,switch_error,len(sswitch_distance),len(sswitch_length),len(sswitch_point_length),np.mean(sswitch_distance),np.mean(sswitch_length),np.mean(sswitch_point_length),sswitch_point_length.count(1)
+		else:
+			print block_index[j],tot,opposite,switch_error
+		Tot+=tot
+		Opposite+=min(opposite,tot-opposite)
+		Switch_error+=switch_error
+		switch_distance=switch_distance+sswitch_distance
+		switch_length=switch_length+sswitch_length
+		switch_point_length=switch_point_length+sswitch_point_length
+	print chr,tot,opposite,switch_error,len(switch_distance),len(switch_length),len(switch_point_length),np.mean(switch_distance),np.mean(switch_length),sum(switch_length)/(len(switch_length)-switch_point_length.count(1)),np.mean(switch_point_length),switch_point_length.count(1)
+	return switch_point_length,switch_distance,switch_length,Tot,Opposite,Switch_error
+
+
 if __name__=="__main__":
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--name",help="Input VCF files")
 	parser.add_argument("--wgs_dir", dest='wgs_dir',default='/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/wgs-align/',help="directory for whole genome sequencing file")
+	parser.add_argument("--prism", dest='prism',default=0,help="prism or not")
 	args = parser.parse_args()
 	
 	
-	switch_distance = []
-	switch_length = []
+	Switch_distance = []   # record distance between switch errors
+	Switch_length = []  	# record the length of switch errors
+	Switch_point_length =[]   # record the number of discordance in each switch
 	tot = 0
 	different = 0
 	switch_error = 0
 	for chr in range(1,23):
+		switch_distance = []   # record distance between switch errors
+		switch_length = []  	# record the length of switch errors
+		switch_point_length =[]   # record the number of discordance in each switch
 		chr = 'chr'+str(chr)
 #		print chr
 		file1 = '%s%s/gVCF_calls/%s.%s.prism.v2.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
-		file2 = '%s%s/gVCF_calls/%s.%s.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
-#		file2 = '/home/jmkidd/kidd-lab/genomes/snp-sets/1KG/phase3/%s/%s.%s.1KGphase3.snp.vcf.gz' %(args.name,args.name,chr)
+#		file1 = '%s%s/all_sites/%s.%s.fosmid.phase.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
+		file2 = '%s%s/all_sites/%s.%s.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
+		file2 = '/home/jmkidd/kidd-lab/genomes/snp-sets/1KG/phase3/%s/%s.%s.1KGphase3.snp.vcf.gz' %(args.name,args.name,chr)
 #		file2 = '/share/jmkidd/songsy/complete-genomics/YRI_trio/%s.%s.phased.vcf.gz' %(args.name,chr)
-		print file1,file2
+#		print file1,file2
 		SNP = create_snp_list(file1)
 		SNP = read_snp(SNP,file2)
-		switch_distance,switch_length,a,b,c=compare_phasing(SNP,switch_distance,switch_length)
+		if args.prism=='1':
+			prism_file = '/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/analysis/Prism/%s/%s.%s.info' %(args.name,args.name,chr)
+			switch_point_length,switch_distance,switch_length,a,b,c=compare_phasing_prism(prism_file,SNP,switch_point_length,switch_distance,switch_length)		
+		else:
+			switch_point_length,switch_distance,switch_length,a,b,c=compare_phasing_v2(SNP,switch_point_length,switch_distance,switch_length)
 		if b<a-b:
 			different +=b
 		else:
 			different += a-b
 		tot +=a
 		switch_error += c
-	print tot,different,switch_error
-			
+		Switch_distance=Switch_distance+switch_distance
+		Switch_length=Switch_length+switch_length
+		Switch_point_length=Switch_point_length+switch_point_length
+		singleton=Switch_point_length.count(1)
+	print tot,different,1-float(different)/tot,switch_error,float(switch_error)/tot,singleton,np.mean(Switch_distance),np.mean(Switch_length),sum(Switch_length)/(len(Switch_length)-Switch_point_length.count(1)),np.mean(Switch_point_length),Switch_point_length.count(1)
+
 			
