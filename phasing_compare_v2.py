@@ -490,6 +490,7 @@ if __name__=="__main__":
 	parser.add_argument("--name",help="Input VCF files")
 	parser.add_argument("--wgs_dir", dest='wgs_dir',default='/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/wgs-align/',help="directory for whole genome sequencing file")
 	parser.add_argument("--prism", dest='prism',default=0,help="prism or not")
+	parser.add_argument("--phase_panel", dest='phase_panel',default='1KGphase1',help="reference panel")
 	parser.add_argument("--phase", dest='phase',default=0,help="prism or not")
 	args = parser.parse_args()
 	
@@ -515,9 +516,14 @@ if __name__=="__main__":
 		else:
 			file1 = '%s%s/gVCF_calls/%s.%s.fosmid.v2.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
 		if args.phase=='shapeit':
-			file2 = '%s%s/gVCF_calls/%s.%s.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
-			if args.name=='NA12878':
-				file2 = '%s%s/all_sites/%s.%s.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
+			if args.phase_panel=='1KGphase1':
+				file2 = '%s%s/gVCF_calls/%s.%s.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
+				if args.name=='NA12878':
+					file2 = '%s%s/all_sites/%s.%s.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
+			elif args.phase_panel=='1KGphase3':
+				file2 = '%s%s/gVCF_calls/%s.%s.1KGphase3.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
+				if args.name=='NA12878':
+					file2 = '%s%s/all_sites/%s.%s.1KGphase3.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
 		else:
 			file2 = '/home/jmkidd/kidd-lab/genomes/snp-sets/1KG/phase3/%s/%s.%s.1KGphase3.snp.vcf.gz' %(args.name,args.name,chr)
 #		file2 = '/share/jmkidd/songsy/complete-genomics/YRI_trio/%s.%s.phased.vcf.gz' %(args.name,chr)

@@ -14,7 +14,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
-
+import pickle
+import os
 def create_snp_list(file1):
 	snp_pos = []
 	snp_geno = []
@@ -243,28 +244,34 @@ def compare_phasing_v2(SNP,switch_point_length,switch_distance,switch_length):
 	return switch_point_length,switch_distance,switch_length,tot,opposite,switch_error
 
 def compare_phasing_v3(block_file,SNP,f_out):   # ignore flip error when calculating distance, and mean length
-	block_list_left = []
-	block_list_right = []
-	for i in BedIterator(block_file):
-		if len(block_list_left)==0:
-			block_list_left.append(int(i[1]))
-			block_list_right.append(int(i[2]))
-		elif int(i[1])>block_list_right[-1]:
-			block_list_left.append(int(i[1]))
-			block_list_right.append(int(i[2]))
-	for i in range(1,len(block_list_left)):
-		assert block_list_left[i]>block_list_left[i-1]
 	list = SNP.index
-	block_index = []
-	for j in range(len(list)):
-		find = find_interval(list[j],block_list_left)
-		try:
-			assert list[j]>=block_list_left[find] and list[j]<=block_list_right[find]
-			block_index.append(find)
-		except AssertionError:
-#			print 'Assertion Error',list[j],block_list_left[find],block_list_right[find]
-			block_index.append(-1)
-	print '-1:',block_index.count(-1)
+	if os.path.isfile(block_file) is False:
+		block_index=[0 for i in list]
+		block_list_left = [0]
+		block_list_right = [0]
+	else:
+		block_list_left = []
+		block_list_right = []
+		for i in BedIterator(block_file):
+			if len(block_list_left)==0:
+				block_list_left.append(int(i[1]))
+				block_list_right.append(int(i[2]))
+			elif int(i[1])>block_list_right[-1]:
+				block_list_left.append(int(i[1]))
+				block_list_right.append(int(i[2]))
+		for i in range(1,len(block_list_left)):
+			assert block_list_left[i]>block_list_left[i-1]
+		list = SNP.index
+		block_index = []
+		for j in range(len(list)):
+			find = find_interval(list[j],block_list_left)
+			try:
+				assert list[j]>=block_list_left[find] and list[j]<=block_list_right[find]
+				block_index.append(find)
+			except AssertionError:
+#				print 'Assertion Error',list[j],block_list_left[find],block_list_right[find]
+				block_index.append(-1)
+		print '-1:',block_index.count(-1)
 	list = SNP.index
 	tot = 0
 	opposite = 0
@@ -290,7 +297,7 @@ def compare_phasing_v3(block_file,SNP,f_out):   # ignore flip error when calcula
 				switch_position.append(list[j])
 				label.append(block_index[j])
 	switch_error,switch_point_length,switch_distance,switch_length,phase_length=calc_phase_error(is_switch,switch_position,label,block_list_left,block_list_right,f_out)
-	print chr,tot,opposite,switch_error,len(switch_distance),len(switch_length),len(switch_point_length),np.mean(switch_distance),np.mean(switch_length),np.mean(switch_point_length),switch_point_length.count(1),np.mean(phase_length)
+	print chr,tot,opposite,switch_error,len(switch_distance),len(switch_length),len(switch_point_length),len(phase_length),np.mean(switch_distance),np.mean(switch_length),np.mean(switch_point_length),switch_point_length.count(1),np.mean(phase_length)
 	return switch_point_length,switch_distance,switch_length,phase_length,tot,opposite,switch_error
 
 def find_interval(pos,list):
@@ -324,6 +331,9 @@ def calc_phase_error(is_switch,switch_position,label,block_list_left,block_list_
 	start = -1
 	switch_error = 0
 	switch_pos=[]
+	extra = 0
+	if len(is_switch)==0:
+		return switch_error,switch_point_length,switch_distance,switch_length,phase_length
 	if is_switch.count(0)>=is_switch.count(1):
 		for k in range(len(is_switch)):
 			if is_switch[k]==1:
@@ -331,12 +341,18 @@ def calc_phase_error(is_switch,switch_position,label,block_list_left,block_list_
 					cur_label=label[k]
 					switch_pos=[switch_position[k]]
 					start = k
+					'''
 					if last_end_pos is None:
 						if k!=0:
+							extra +=1
+							print 'extra:',start,k,is_switch[k]
 							phase_length.append(int(switch_position[start])-int(switch_position[0]))
 					else:
+						extra +=1
+						print 'extra:',start,k,is_switch[k],switch_position[start],last_end_pos
 						phase_length.append(int(switch_position[start])-last_end_pos)
 					last_end_pos=int(switch_position[start])
+					'''
 				else:
 					if label[k]==cur_label:
 						switch_pos.append(switch_position[k])
@@ -355,7 +371,13 @@ def calc_phase_error(is_switch,switch_position,label,block_list_left,block_list_
 					if end!=start+1:
 						switch_point_length.append(end-start)
 						switch_length.append(int(switch_position[end-1])-int(switch_position[start]))
-						phase_length.append(int(switch_position[end-1])-last_end_pos)
+						phase_length.append(int(switch_position[end-1])-int(switch_position[start]))
+						if last_end_pos is None:
+							extra +=1
+							phase_length.append(int(switch_position[start])-int(switch_position[0]))
+						else:
+							extra +=1
+							phase_length.append(int(switch_position[start])-last_end_pos)
 						last_end_pos=int(switch_position[end-1])
 						if last_error_pos is None:
 							last_error_pos = int(switch_position[start])
@@ -374,7 +396,13 @@ def calc_phase_error(is_switch,switch_position,label,block_list_left,block_list_
 				if end!=start:
 					switch_point_length.append(end-start+1)
 					switch_length.append(int(switch_position[end])-int(switch_position[start]))
-					phase_length.append(int(switch_position[end])-last_end_pos)
+					phase_length.append(int(switch_position[end-1])-int(switch_position[start]))
+					if last_end_pos is None:
+						extra +=1
+						phase_length.append(int(switch_position[start])-int(switch_position[0]))
+					else:
+						extra +=1
+						phase_length.append(int(switch_position[start])-last_end_pos)
 					if last_error_pos is None:
 						last_error_pos = int(switch_position[start])
 					else:
@@ -393,12 +421,16 @@ def calc_phase_error(is_switch,switch_position,label,block_list_left,block_list_
 					cur_label=label[k]
 					switch_pos=[switch_position[k]]
 					start = k
+					'''
 					if last_end_pos is None:
 						if k!=0:
+							extra +=1
 							phase_length.append(int(switch_position[start])-int(switch_position[0]))
 					else:
+						extra +=1
 						phase_length.append(int(switch_position[start])-last_end_pos)
 					last_end_pos=int(switch_position[start])
+					'''
 				else:
 					if label[k]==cur_label:
 						switch_pos.append(switch_position[k])
@@ -417,7 +449,13 @@ def calc_phase_error(is_switch,switch_position,label,block_list_left,block_list_
 					if end!=start+1:
 						switch_point_length.append(end-start)
 						switch_length.append(int(switch_position[end-1])-int(switch_position[start]))
-						phase_length.append(int(switch_position[end-1])-last_end_pos)
+						phase_length.append(int(switch_position[end-1])-int(switch_position[start]))
+						if last_end_pos is None:
+							extra +=1
+							phase_length.append(int(switch_position[start])-int(switch_position[0]))
+						else:
+							extra +=1
+							phase_length.append(int(switch_position[start])-last_end_pos)
 						last_end_pos=int(switch_position[end-1])
 						if last_error_pos is None:
 							last_error_pos = int(switch_position[start])
@@ -436,7 +474,13 @@ def calc_phase_error(is_switch,switch_position,label,block_list_left,block_list_
 				if end!=start:
 					switch_point_length.append(end-start+1)
 					switch_length.append(int(switch_position[end])-int(switch_position[start]))
-					phase_length.append(int(switch_position[end])-last_end_pos)
+					phase_length.append(int(switch_position[end-1])-int(switch_position[start]))
+					if last_end_pos is None:
+						extra +=1
+						phase_length.append(int(switch_position[start])-int(switch_position[0]))
+					else:
+						extra +=1
+						phase_length.append(int(switch_position[start])-last_end_pos)
 					if last_error_pos is None:
 						last_error_pos = int(switch_position[start])
 					else:
@@ -448,6 +492,7 @@ def calc_phase_error(is_switch,switch_position,label,block_list_left,block_list_
 					switch_point_length.append(1)
 		if len(switch_pos)!=0:
 			print >>f_out,'%s\t%s\t%s\t%s' %(chr,block_list_left[cur_label],block_list_right[cur_label],",".join(map(str,switch_pos)))
+	print 'length',extra,len(switch_length),len(phase_length)
 	return switch_error,switch_point_length,switch_distance,switch_length,phase_length
 
 def compare_phasing_prism(prism_file,SNP,switch_point_length,switch_distance,switch_length,phase_length,f_out):
@@ -491,7 +536,7 @@ def compare_phasing_prism(prism_file,SNP,switch_point_length,switch_distance,swi
 			if tot>1:
 				switch_error,sswitch_point_length,sswitch_distance,sswitch_length,sphase_length=calc_phase_error(is_switch,switch_position,label,block_list_left,block_list_right,f_out)
 				if switch_error!=0:
-					print block_index[j],tot,opposite,switch_error,len(sswitch_distance),len(sswitch_length),len(sswitch_point_length),np.mean(sswitch_distance),np.mean(sswitch_length),np.mean(sswitch_point_length),sswitch_point_length.count(1),np.mean(sphase_length)
+					print block_index[j],tot,opposite,switch_error,len(sswitch_distance),len(sswitch_length),len(sswitch_point_length),len(sphase_length),np.mean(sswitch_distance),np.mean(sswitch_length),np.mean(sswitch_point_length),sswitch_point_length.count(1),np.mean(sphase_length)
 				else:
 					print block_index[j],tot,opposite,switch_error
 				Tot+=tot
@@ -527,7 +572,7 @@ def compare_phasing_prism(prism_file,SNP,switch_point_length,switch_distance,swi
 	if tot>1:
 		switch_error,sswitch_point_length,sswitch_distance,sswitch_length,sphase_length=calc_phase_error(is_switch,switch_position,label,block_list_left,block_list_right,f_out)
 		if switch_error!=0:
-			print block_index[j],tot,opposite,switch_error,len(sswitch_distance),len(sswitch_length),len(sswitch_point_length),np.mean(sswitch_distance),np.mean(sswitch_length),np.mean(sswitch_point_length),sswitch_point_length.count(1),np.mean(sphase_length)
+			print block_index[j],tot,opposite,switch_error,len(sswitch_distance),len(sswitch_length),len(sswitch_point_length),len(sphase_length),np.mean(sswitch_distance),np.mean(sswitch_length),np.mean(sswitch_point_length),sswitch_point_length.count(1),np.mean(sphase_length)
 		else:
 			print block_index[j],tot,opposite,switch_error
 		Tot+=tot
@@ -537,7 +582,7 @@ def compare_phasing_prism(prism_file,SNP,switch_point_length,switch_distance,swi
 		switch_length=switch_length+sswitch_length
 		switch_point_length=switch_point_length+sswitch_point_length
 		phase_length=phase_length+sphase_length
-	print chr,tot,opposite,switch_error,len(switch_distance),len(switch_length),len(switch_point_length),len(phase_length),np.mean(switch_distance),np.mean(switch_length),np.mean(switch_point_length),switch_point_length.count(1),(sum(switch_point_length)-switch_point_length.count(1))/(len(switch_point_length)-switch_point_length.count(1)),np.mean(phase_length)
+	print chr,Tot,Opposite,Switch_error,len(switch_distance),len(switch_length),len(switch_point_length),len(phase_length),np.mean(switch_distance),np.mean(switch_length),np.mean(switch_point_length),switch_point_length.count(1),(sum(switch_point_length)-switch_point_length.count(1))/(len(switch_point_length)-switch_point_length.count(1)),np.mean(phase_length)
 	return switch_point_length,switch_distance,switch_length,phase_length,Tot,Opposite,Switch_error
 
 
@@ -545,6 +590,7 @@ if __name__=="__main__":
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--name",help="Input VCF files")
 	parser.add_argument("--wgs_dir", dest='wgs_dir',default='/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/wgs-align/',help="directory for whole genome sequencing file")
+	parser.add_argument("--phase_panel", dest='phase_panel',default='1KGphase1',help="reference panel")
 	parser.add_argument("--prism", dest='prism',default=0,help="prism or not")
 	parser.add_argument("--phase", dest='phase',default=0,help="prism or not")
 	args = parser.parse_args()
@@ -573,9 +619,14 @@ if __name__=="__main__":
 		else:
 			file1 = '%s%s/gVCF_calls/%s.%s.fosmid.v2.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
 		if args.phase=='shapeit':
-			file2 = '%s%s/gVCF_calls/%s.%s.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
-			if args.name=='NA12878':
-				file2 = '%s%s/all_sites/%s.%s.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
+			if args.phase_panel=='1KGphase1':
+				file2 = '%s%s/gVCF_calls/%s.%s.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
+				if args.name=='NA12878':
+					file2 = '%s%s/all_sites/%s.%s.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
+			elif args.phase_panel=='1KGphase3':
+				file2 = '%s%s/gVCF_calls/%s.%s.1KGphase3.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
+				if args.name=='NA12878':
+					file2 = '%s%s/all_sites/%s.%s.1KGphase3.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
 		else:
 			file2 = '/home/jmkidd/kidd-lab/genomes/snp-sets/1KG/phase3/%s/%s.%s.1KGphase3.snp.vcf.gz' %(args.name,args.name,chr)
 		print file1,file2
@@ -617,6 +668,11 @@ if __name__=="__main__":
 		Switch_point_length=Switch_point_length+switch_point_length
 		Phase_length=Phase_length+phase_length
 		singleton=Switch_point_length.count(1)
+	dbfile = open('%s_%s_%s_SNP_pickle' %(args.name,args.phase,args.phase_panel),'wb')
+	pickle.dump(Switch_distance,dbfile)
+	pickle.dump(Switch_length,dbfile)
+	pickle.dump(Switch_point_length,dbfile)
+	pickle.dump(Phase_length,dbfile)
 	print switch_error,len(Switch_distance),len(Switch_length),len(Switch_point_length),len(Phase_length)
 	print tot,different,1-float(different)/tot,switch_error,float(switch_error)/tot,singleton,float(singleton)/tot,np.mean(Switch_distance),np.mean(Switch_length),np.mean(Switch_point_length),Switch_point_length.count(1),(sum(Switch_point_length)-Switch_point_length.count(1))/(len(Switch_point_length)-Switch_point_length.count(1)),np.mean(Phase_length)
 

@@ -463,13 +463,17 @@ if __name__=="__main__":
 	MEC,mec,BLOCK=read_matrix(matrix_file,BLOCK,decode,decode_pos,mec)
 	print BLOCK[block_list[0]]
 
-	mec=make_matrix2png(BLOCK,block_list,mec)
-	run_matrix2png()
+	dbfile=open('BLOCK/%s_gvcf/%s_BLOCK_' %(SAMPLE,SAMPLE) +CHROM+'_pickle','wb')
+	pickle.dump(BLOCK,dbfile) 
+	pickle.dump(block_list,dbfile)
+	
+#	mec=make_matrix2png(BLOCK,block_list,mec)
+#	run_matrix2png()
 
-	haplotype_file = 'Refhap/%s_%s.gvcf.snp.haplotype_detail' %(SAMPLE,CHROM)
-	make_track(haplotype_file,block_list,mec)
+#	haplotype_file = 'Refhap/%s_%s.gvcf.snp.haplotype_detail' %(SAMPLE,CHROM)
+#	make_track(haplotype_file,block_list,mec)
 
-	snp_decode = make_prism_input(BLOCK,mec)
+#	snp_decode = make_prism_input(BLOCK,mec)
 	'''
 	SAMPLE = args.sample
 	CHROM = args.chr
