@@ -370,6 +370,82 @@ def make_prism_input(BLOCK,mec):
 		print >>f_out4,"%s\t%s\t%s\t%s\t%s" %(chr,pos,last_pos,id,mec[block_name][7])	
 	return snp_decode
 
+def make_prism_input_v2(BLOCK):
+	f = gzip.open("Prism/%s_new/%s.%s.positions.gz" %(SAMPLE,SAMPLE,CHROM),'r')
+	f_track = "BLOCK/%s_gvcf/%s_refhap_track_info_" %(SAMPLE,SAMPLE)+CHROM+".txt"
+	position = []
+	for line in f:
+		position.append(int(line.strip().split(',')[0]))
+	snp_decode={}
+	f_out1 = open("Prism/%s_new/%s.%s.local.blocks.all" %(SAMPLE,SAMPLE,CHROM),"w")
+	f_out4 = open("Prism/%s_new/%s.%s.info" %(SAMPLE,SAMPLE,CHROM),"w")
+	id = 0
+	last_item = ""
+	prev_none = False
+	prev_range=None
+	current_range=None
+	first = True
+	for i in BedIterator(f_track):
+		interleaving = False
+		chr = i[0]
+		pos = i[1]
+		pos2 = i[2]
+		block_name = chr+" "+pos
+		if i[3]=="None":
+			continue
+		if first is True:
+			prev_range=(pos,pos2)
+			first = False
+		else:
+			current_range=(pos,pos2)
+			if int(current_range[0])<int(prev_range[1]):
+				interleaving = True
+			prev_range=(pos,pos2)
+		last_pos = pos
+		string = []
+		for j in BLOCK[block_name].index:
+			if BLOCK[block_name]["hap"][j] !=0.5:
+				find = find_pos(int(j),position)
+				if find <0:
+					allele1 = int(BLOCK[block_name]["hap"][j])
+					allele2 = 1-int(BLOCK[block_name]["hap"][j])
+					snp_decode[j]=str(allele1)+'|'+str(allele2)
+					continue
+				last_pos = j
+				string.append(str(j)+":"+str(int(BLOCK[block_name]["hap"][j]))+":"+str(1-int(BLOCK[block_name]["hap"][j])))
+				allele1 = int(BLOCK[block_name]["hap"][j])
+				allele2 = 1-int(BLOCK[block_name]["hap"][j])
+				snp_decode[j]=str(allele1)+'|'+str(allele2)
+			else:
+				find = find_pos(int(j),position)
+				if find <0:
+					snp_decode[j]='0/1'
+					continue
+#				id +=1
+#				tag = "ID=%i:LEFT_CLOUD_IDS=:RIGHT_CLOUD_IDS="  %(id)
+#				print 'interleave',block_name,id,j
+#				print >>f_out3,"%s\t%s\t%s\t%s\t%s" %(chr,str(j),str(j),tag,str(j)+":0:1")
+#				print >>f_out4,"%s\t%s\t%s\t%s\tinterleaving" %(chr,str(j),str(j),id)
+				snp_decode[j]='0/1'
+		'''
+		if len(string)==0:
+			id +=1
+			print 'miss block',block_name
+			print >>f_out4,"%s\t%s\t%s\t%s\t%s" %(chr,pos,pos2,id,mec[block_name][7]+",drop")
+			continue
+		if interleaving is True:
+			id +=1
+			tag = "ID=%i:LEFT_CLOUD_IDS=:RIGHT_CLOUD_IDS="  %(id)
+			print >>f_out3,"%s\t%s\t%s\t%s\t%s" %(chr,pos,last_pos,tag,"\t".join(string))
+			print >>f_out4,"%s\t%s\t%s\t%s\t%s" %(chr,pos,last_pos,id,mec[block_name][7]+",interleave")
+			continue
+		'''
+		id +=1
+		tag = "ID=%i:LEFT_CLOUD_IDS=:RIGHT_CLOUD_IDS="  %(id)
+		print >>f_out1,"%s\t%s\t%s\t%s\t%s" %(chr,pos,last_pos,tag,"\t".join(string))
+		print >>f_out4,"%s\t%s\t%s\t%s\t%s" %(chr,pos,last_pos,id,i[3])	
+	return snp_decode
+
 def make_prism_interleave(SNP_not_shown):
 #	f = open("Prism/%s/%s.%s.local.interleaving.blocks" %(SAMPLE,SAMPLE,CHROM),"r")
 	f_out = open("Prism/%s/%s.%s.local.interleaving.v2.blocks" %(SAMPLE,SAMPLE,CHROM),"w")
@@ -445,7 +521,7 @@ if __name__=="__main__":
 	SOURCE = args.source
 	POP = args.pop
 	all_var_file= args.sample+"_combined_genome_allvars_gvcf_SNP"
-
+	'''
 	SNP = create_snp_list(all_var_file)
 	print "SNP list set up"
 	
@@ -466,14 +542,17 @@ if __name__=="__main__":
 	dbfile=open('BLOCK/%s_gvcf/%s_BLOCK_' %(SAMPLE,SAMPLE) +CHROM+'_pickle','wb')
 	pickle.dump(BLOCK,dbfile) 
 	pickle.dump(block_list,dbfile)
-	
+	'''
+	dbfile=open('BLOCK/%s_gvcf/%s_BLOCK_' %(SAMPLE,SAMPLE) +CHROM+'_pickle','rb')
+	BLOCK=pickle.load(dbfile) 
+	block_list=pickle.load(dbfile)
 #	mec=make_matrix2png(BLOCK,block_list,mec)
 #	run_matrix2png()
 
 #	haplotype_file = 'Refhap/%s_%s.gvcf.snp.haplotype_detail' %(SAMPLE,CHROM)
 #	make_track(haplotype_file,block_list,mec)
 
-#	snp_decode = make_prism_input(BLOCK,mec)
+	snp_decode = make_prism_input_v2(BLOCK)
 	'''
 	SAMPLE = args.sample
 	CHROM = args.chr

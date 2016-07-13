@@ -6,10 +6,14 @@
 
 import sys
 import argparse
+import gzip
 
 class VcfIterator:
   def __init__(self, filename):
-	self.file = open(filename, "r")
+	if filename[-2:]=='gz':
+		self.file = gzip.open(filename, "r")
+	else:
+		self.file = open(filename, "r")
   
   def __iter__(self):
 	return self

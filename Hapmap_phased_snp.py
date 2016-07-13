@@ -128,8 +128,8 @@ if __name__=="__main__":
 		for info in BedIterator(file):
 			print >>f_out,"%s\t%i\t%i\t%s" %(chr,int(info[1])-1,int(info[1]),info[0])
 			dict[chr][info[0]]=" ".join(info[2:])
-	cmds = 'liftOver %s /home/jmkidd/kidd-lab/genomes/lift-over/hg18ToHg19.over.chain %s unmapped.bed' %('%s_phased_sites.bed' %(args.population),'%s_phased_sites_hg19.bed' %(args.population))
-	runCMD(cmds)
+#	cmds = 'liftOver %s /home/jmkidd/kidd-lab/genomes/lift-over/hg18ToHg19.over.chain %s unmapped.bed' %('%s_phased_sites.bed' %(args.population),'%s_phased_sites_hg19.bed' %(args.population))
+#	runCMD(cmds)
 
 	for info in BedIterator('%s_phased_sites_hg19.bed' %(args.population)):
 		print '%s %s %s %s' %(info[0],info[3],info[2],dict[info[0]][info[3]])

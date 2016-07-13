@@ -33,9 +33,9 @@ def merge_phase(info_file,chr,id_to_block,block_to_snp,block_to_mec):
 	for file in f_list:
 		start = None
 		if not os.path.isfile('prism_all_block/'+str(file)):
-			cmds = "grep '%s' %s.chr%s.prism.cmds >> prism.redo.cmds " %(str(file),args.sample,chr)
+			cmds = "grep '%s' %s.chr%s.prism.cmds " %(str(file),args.sample,chr)
 			print cmds
-			os.popen(cmds)
+#			os.popen(cmds)
 			continue
 		for i in BedIterator('prism_all_block/'+str(file)):
 			if i[0]=='#ID':
@@ -263,6 +263,68 @@ def calc_switch_error_v2(chr,tot_switch_error,tot_block_wrong,tot_snp_wrong,tot_
 	tot_block +=sum(count)
 	tot_snp += sum(count_snp)
 	return tot_switch_error,tot_block_wrong,tot_snp_wrong,tot_block,tot_snp,phase,is_switch,switch_position_left,switch_position_right
+
+def calc_switch_error_v3(chr,tot_switch_error,tot_block_wrong,tot_snp_wrong,tot_block,tot_snp):
+	f='%s.chr%s.all.phase' %(args.sample,chr)
+	count = [0,0]
+	count_snp = [0,0]
+	posterior_range = [0,0.5,0.6,0.7,0.8,0.9,1]
+	posterior_block = [[0,0] for x in range(len(posterior_range))]
+	posterior_snp = [[0,0] for x in range(len(posterior_range))]
+	first = True
+	switch_error = 0
+	phase={}
+	last_block = '1'
+	is_switch = []
+	switch_position_left = []
+	switch_position_right = []
+	posterior = []
+	snp_num = []
+	switch_posterior = []
+	switch = False
+	for i in BedIterator(f):
+		if i[0]==last_block:
+			if len(posterior)!=0:
+				posterior.pop()
+				snp_num.pop() 
+			continue
+		last_block = i[0]
+		if i[7]!='None':
+			count[int(i[1])]+=1
+			count_snp[int(i[1])]+=int(i[8])
+			posterior.append(float(i[2]))
+			snp_num.append(int(i[8]))
+			for j in range(len(posterior_range)):
+				if float(i[2])>=posterior_range[j]:
+					posterior_block[j][int(i[1])]+=1
+					posterior_snp[j][int(i[1])]+=int(i[8])
+			is_switch.append(int(i[1]))
+			switch_position_left.append(int(i[5]))
+			switch_position_right.append(int(i[6]))
+			if first:
+				old = int(i[1])
+				old_posterior = float(i[2])
+				first = False
+			else:
+				if old!=int(i[1]):
+					switch_error +=1
+					old = int(i[1])
+					if chr==22:
+						print old_posterior
+					switch_posterior.append(old_posterior)
+					switch = True
+				else:
+					switch = False
+				old_posterior = float(i[2])
+		phase[i[4]+" "+i[5]]=int(i[1])
+	flip = 1 if count_snp[1]>count_snp[0] else 0
+	print count,count_snp,min(count),min(count_snp),switch_error-1,flip
+	tot_switch_error+=switch_error-1
+	tot_block_wrong += min(count)
+	tot_snp_wrong += min(count_snp)
+	tot_block +=sum(count)
+	tot_snp += sum(count_snp)
+	return switch_posterior,posterior,snp_num,posterior_block,posterior_snp,flip,tot_switch_error,tot_block_wrong,tot_snp_wrong,tot_block,tot_snp,phase,is_switch,switch_position_left,switch_position_right
 
 def calc_switch_error_length(is_switch,switch_position_left,switch_position_right):
 	start = -1
@@ -501,7 +563,7 @@ if __name__=="__main__":
 
 	args = parser.parse_args()
 	SAMPLE = args.sample
-
+	'''
 	affy_posterior=[]
 	None_posterior=[]
 	for i in range(1,23):
@@ -516,8 +578,8 @@ if __name__=="__main__":
 		block_to_mec=get_block_mec(mec_file)
 		merge_phase(info_file,i,id_to_block,block_to_snp,block_to_mec)
 #		phase_info(info_file,i,id_to_block,block_to_snp,block_to_mec)
-#		affy_posterior,None_posterior=draw_hist(i,affy_posterior,None_posterior)
-	'''
+		affy_posterior,None_posterior=draw_hist(i,affy_posterior,None_posterior)
+
 	fig,ax1=plt.subplots(figsize=(7,7))
 	bins = 20
 #	ax1.hist(affy_posterior,bins,facecolor='green',alpha=0.5,histtype='bar',label='Affy')
@@ -525,7 +587,7 @@ if __name__=="__main__":
 	ax1.set_xlabel('posterior')
 	ax1.set_ylabel('count')
 	plt.savefig(args.sample+'_heatmap.png',format='png',dpi=200)
-
+	'''
 	tot_switch_error = 0
 	tot_block = 0
 	tot_block_wrong = 0
@@ -534,25 +596,55 @@ if __name__=="__main__":
 	phase_length = []
 	Switch_error = 0
 	switch_length = []
+	posterior_range = [0,0.5,0.6,0.7,0.8,0.9,1]
+	Posterior_block = [[0,0] for x in range(len(posterior_range))]
+	Posterior_snp = [[0,0] for x in range(len(posterior_range))]
+	Posterior=[]
+	Snp_num = []
+	Switch_posterior = []
 	for i in range(1,23):
 		print 'chr',i
 		CHROM='chr'+str(i)
-		tot_switch_error,tot_block_wrong,tot_snp_wrong,tot_block,tot_snp,phase,is_switch,switch_position_left,switch_position_right=calc_switch_error_v2(i,tot_switch_error,tot_block_wrong,tot_snp_wrong,tot_block,tot_snp)
+		switch_posterior,posterior,snp_num,posterior_block,posterior_snp,flip,tot_switch_error,tot_block_wrong,tot_snp_wrong,tot_block,tot_snp,phase,is_switch,switch_position_left,switch_position_right=calc_switch_error_v3(i,tot_switch_error,tot_block_wrong,tot_snp_wrong,tot_block,tot_snp)
+		Posterior += posterior
+		Snp_num += snp_num
+		Switch_posterior += switch_posterior
+		for j in range(len(Posterior_block)):
+			Posterior_block[j][0]+=posterior_block[j][0] if flip==0 else posterior_block[j][1]
+			Posterior_block[j][1]+=posterior_block[j][1] if flip==0 else posterior_block[j][0]
+			Posterior_snp[j][0]+=posterior_snp[j][0] if flip==0 else posterior_snp[j][1]
+			Posterior_snp[j][1]+=posterior_snp[j][1] if flip==0 else posterior_snp[j][0]
+		'''
 		switch_error,sswitch_length,sphase_length=calc_switch_error_length(is_switch,switch_position_left,switch_position_right)
 		print switch_error,np.mean(sswitch_length),np.mean(sphase_length)
 		Switch_error+=switch_error
 		switch_length=switch_length+sswitch_length
 		phase_length=phase_length+sphase_length
+		'''
+#	print tot_switch_error,tot_block,float(tot_switch_error)/tot_block,tot_block_wrong,tot_block,float(tot_block_wrong)/tot_block,tot_snp_wrong,tot_snp,float(tot_snp_wrong)/tot_snp
+#	print Switch_error,np.mean(switch_length),np.mean(phase_length)
+	for j in range(len(Posterior_block)):
+		print j,posterior_range[j],float(Posterior_block[j][0])/sum(Posterior_block[j]),float(Posterior_snp[j][0])/sum(Posterior_snp[j])
 	
-		snp_not_shown_file = args.analysis_dir +args.sample + "_gvcf_SNPs_not_shown"
-		SNP_not_shown=SNPs_not_shown(snp_not_shown_file)
-		haplotype_file = args.analysis_dir +args.sample+'_gvcf_snp_haplotype_detail'
-		BLOCK,block_list,decode,mec=read_haplotype(haplotype_file,SNP_not_shown)
-		snp_decode = read_hap(BLOCK,block_list,phase)
-		wgs_vcf = args.wgs_dir + SAMPLE+ '/gVCF_calls/%s.%s.vcf.gz' %(SAMPLE,CHROM)
-		write_vcf_v2(wgs_vcf,snp_decode)
+	heatmap, xedges, yedges = np.histogram2d(Posterior, Snp_num, bins=[[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],[0,10,100,500,1000,max(Snp_num)]])
+	extents = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+	plt.clf()
+	plt.imshow(heatmap.T,extent=extents,aspect="auto",interpolation='nearest',origin='lower',cmap='jet')
+	pos = range(0,max(Snp_num),max(Snp_num)/5)
+	if len(pos)==5:
+		pos+=[max(Snp_num)]
+	pylab.yticks(pos,["0","10","100","500","1000",str(max(Snp_num))])	
+	plt.colorbar()
+	plt.xlabel('posterior')
+	plt.ylabel('number of snp')
+	plt.title(args.sample+' posterior & number of snp heatmap')
+	plt.savefig(args.sample+'_heatmap.pdf',format='pdf',dpi=200)
 
-	print tot_switch_error,tot_block,float(tot_switch_error)/tot_block,tot_block_wrong,tot_block,float(tot_block_wrong)/tot_block,tot_snp_wrong,tot_snp,float(tot_snp_wrong)/tot_snp
-	print Switch_error,np.mean(switch_length),np.mean(phase_length)
-	'''
-		
+	print 'num of switch', len(Switch_posterior)
+	fig,ax1=plt.subplots(figsize=(7,7))
+	bins = 20
+#	ax1.hist(affy_posterior,bins,facecolor='green',alpha=0.5,histtype='bar',label='Affy')
+	ax1.hist(Switch_posterior,bins,facecolor='blue',alpha=0.5,histtype='bar',label='None')
+	ax1.set_xlabel('posterior')
+	ax1.set_ylabel('count')
+	plt.savefig(args.sample+'_switch_posterior_heatmap.pdf',format='pdf',dpi=200)

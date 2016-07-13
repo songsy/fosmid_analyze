@@ -589,23 +589,21 @@ def compare_phasing_prism(prism_file,SNP,switch_point_length,switch_distance,swi
 if __name__=="__main__":
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--name",help="Input VCF files")
-	parser.add_argument("--wgs_dir", dest='wgs_dir',default='/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/wgs-align/',help="directory for whole genome sequencing file")
+	parser.add_argument("--wgs_dir", dest='wgs_dir',default='/mnt/EXT/Kidd-scratch/shiya-projects/Reich_fosmid/wgs/',help="directory for whole genome sequencing file")
 	parser.add_argument("--phase_panel", dest='phase_panel',default='1KGphase1',help="reference panel")
 	parser.add_argument("--prism", dest='prism',default=0,help="prism or not")
 	parser.add_argument("--phase", dest='phase',default=0,help="prism or not")
 	args = parser.parse_args()
 	
 	Switch_distance = []   # record distance between switch errors
-	Switch_length = []  	# record the length of switch errors
+	Switch_length = []  	# record the length of switch errors, incorrectly phased haplotype
 	Switch_point_length =[]   # record the number of discordance in each switch
-	Phase_length = []
+	Phase_length = []  # inter-switch distance
 	tot = 0
 	different = 0
 	switch_error = 0
 	if args.phase=='shapeit':
 		f_out=open('%s_shapeit_switch_error.txt' %(args.name),'w')
-	elif args.phase=='moleculo':
-		f_out=open('%s_moleculo_switch_error.txt' %(args.name),'w')
 	else:
 		f_out=open('%s_1KGphase3_switch_error.txt' %(args.name),'w')
 	for chr in range(1,23):
@@ -613,9 +611,9 @@ if __name__=="__main__":
 		switch_length = []  	# record the length of switch errors
 		switch_point_length =[]   # record the number of discordance in each switch
 		phase_length = []
-		chr = 'chr'+str(chr)
+		chr = str(chr)
 		if args.prism=='1':
-			file1 = '%s%s/gVCF_calls/%s.%s.prism.v2.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
+			file1 = '%s%s/gVCF_calls/%s.%s.prism.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
 		elif args.name=='NA12878':
 			file1 = '%s%s/all_sites/%s.%s.fosmid.phase.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
 		else:
@@ -629,15 +627,13 @@ if __name__=="__main__":
 				file2 = '%s%s/gVCF_calls/%s.%s.1KGphase3.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
 				if args.name=='NA12878':
 					file2 = '%s%s/all_sites/%s.%s.1KGphase3.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
-		elif args.phase=='moleculo':
-			file2 = '%s%s/all_sites/%s.%s.moleculo.phased.vcf.gz' %(args.wgs_dir,args.name,args.name,chr)
 		else:
 			file2 = '/home/jmkidd/kidd-lab/genomes/snp-sets/1KG/phase3/%s/%s.%s.1KGphase3.snp.vcf.gz' %(args.name,args.name,chr)
 		print file1,file2
 		SNP = create_snp_list(file1)
 		SNP = read_snp(SNP,file2)
 		if args.prism=='1':
-			prism_file = '/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/analysis/Prism/%s/%s.%s.info' %(args.name,args.name,chr)
+			prism_file = '/mnt/EXT/Kidd-scratch/shiya-projects/Reich_fosmid/analysis/Prism/%s/%s.%s.info' %(args.name,args.name,chr)
 			switch_point_length,switch_distance,switch_length,phase_length,a,b,c=compare_phasing_prism(prism_file,SNP,switch_point_length,switch_distance,switch_length,phase_length,f_out)		
 		else:
 			block_file = '/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/analysis/BLOCK/%s_gvcf/%s_refhap_track_info_%s.txt' %(args.name,args.name,chr)

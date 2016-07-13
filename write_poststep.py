@@ -145,6 +145,23 @@ def gVCFcaller(sample,coverage):
 		cmds = '/home/songsy/script/msmc_tools/gVCFcaller.py --depth %s --gvcf %s --vcf %s --chr %s --mask %s --log %s --legend_file %s| gzip -c > %s' %(coverage,gvcf,vcf,chr,mask_file,log,legend,out)
 		print >>f,cmds
 
+def gVCFcaller_v2(sample,coverage):
+	inputDir = '/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/wgs-align'
+	outFile = '/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/process/script/2015/%s_%s_gVCFcaller.cmds' %(sample,commands.getoutput('date +"%m%d"'))
+#	f = open(outFile,'w')
+	vcf = '%s/%s/%s.recal.ALL.vcf.gz' %(inputDir,sample,sample)
+	for chr in chr_list():
+		legend = '/home/jmkidd/kidd-lab/genomes/snp-sets/1KG/phase1/ALL.integrated_phase1_SHAPEIT_16-06-14.nomono/ALL.%s.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.nomono.legend.gz' %(chr)
+		gvcf = '%s/%s/gVCF_calls/%s.%s.all.sites.vcf.gz' %(inputDir,sample,sample,chr)
+		mask_file = '%s/%s/gVCF_calls/%s_%s.mask.v2.bed.gz' %(inputDir,sample,sample,chr)
+		out = '%s/%s/gVCF_calls/%s.%s.vcf.v2.gz' %(inputDir,sample,sample,chr)
+		log = '%s/%s/gVCF_calls/%s_gVCFcaller_v2.log' %(inputDir,sample,sample)
+		if chr!='chrX':
+			cmds = '/home/songsy/script/msmc_tools/gVCFcaller_v2.py --depth %s --gvcf %s --vcf %s --chr %s --mask %s --log %s --legend_file %s| gzip -c > %s' %(coverage,gvcf,vcf,chr,mask_file,log,legend,out)
+		else:
+			cmds = '/home/songsy/script/msmc_tools/gVCFcaller_v2.py --depth %s --gvcf %s --vcf %s --chr %s --mask %s --log %s | gzip -c > %s' %(coverage,gvcf,vcf,chr,mask_file,log,out)
+			print cmds
+
 def wgs_all_sites_v3(sample):
 	inputDir = '/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/wgs-align'
 	outFile = '/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/process/script/%s_%s_wgs_all_sites.cmds' %(sample,commands.getoutput('date +"%m%d"'))
@@ -246,10 +263,10 @@ if __name__=="__main__":
 #	find_clone_cmds(pool_name,args.sample)
 #	SNP_calling_cmds(pool_name,args.sample)
 #	checkbam(pool_name,sample_name)
-	checkvcf(pool_name,args.sample)
+#	checkvcf(pool_name,args.sample)
 #	wgs_all_sites_v6(args.sample)
 #	remove(pool_name,args.sample)
 #	wgs_all_sites(sample_name,coverage)
-#	gVCFcaller(args.sample,args.coverage)
+	gVCFcaller_v2(args.sample,args.coverage)
 #	wgs_all_sites_v3(args.sample)
 #	wgs_all_sites_v5(args.sample)

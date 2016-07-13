@@ -6,6 +6,7 @@
 # Calculate pairwise LD between each pair of SNP, bin into categories.
 # In each category of LD, calc the genotype concordance, also calc the MEC value
 # draw LD vs genotype concordance, MEC value, and the correlation of genotype concordance and MEC value
+# For all possible pair of snp, either within same block or within a certian distance(1MB)
 
 import sys
 from NGS_utils import *
@@ -236,7 +237,11 @@ def read_reference_SNP(SNP,hap_file,pop_list,pos_index,index_to_pos):
 		index+=1
 		if index%10000==0:
 			print index,'done'
-	SNP["reference"] = pd.Series([1 for m in snp_pos],index=snp_pos)
+	try:
+		SNP["reference"] = pd.Series([1 for m in snp_pos],index=snp_pos)
+	except TypeError:
+		new_column = pd.Series([1 for m in snp_pos],index=snp_pos)
+		SNP["reference"] = new_column.reset_index(level=0, drop=True)
 	return SNP,snp_pos,reference
 
 def calc_LD(hA,hB):
@@ -462,6 +467,76 @@ def calc_pairwise_LD_concordance_within_block(SNP,reference,snp_pos,flip_array):
 	print 'length',len(dist)
 	return Compare
 
+def calc_pairwise_LD_concordance_v2(SNP,reference,snp_pos,flip):   # use flip instead of flip_array
+	dist_range = [0,5,10,100,1e06]
+	LD_range = np.linspace(0,1,num=21)
+	abundance1 = [[0 for x in range(len(LD_range))] for x in range(len(dist_range))] 
+	genotype_concordance1 = [[0 for x in range(len(LD_range))] for x in range(len(dist_range))] 
+	SNP = SNP[SNP["block_index"]>0]
+	dist = []
+	LD = []
+	concord = []
+	list = SNP.index
+	tot = 0
+	for i in range(len(list)):
+		for j in range(i,len(list)):
+			pos_dist=float(list[j]-list[i])/1000
+			if abs(pos_dist)>1000:
+				break
+			a=SNP["block_index"][list[i]]
+			b=SNP["block_index"][list[j]]
+			if a!=b or a==0 or b==0:
+				continue
+			pos_LD = calc_LD(reference[i],reference[j])
+			if SNP["phase1"][list[i]]==SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip ==0 else 0
+			elif SNP["phase1"][list[i]]==1-SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==1-SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip ==1 else 0
+			else:
+				pos_concord1 = 0
+			index_i = find_interval(pos_dist,dist_range)
+			index_j = find_interval(pos_LD,map(float,LD_range))
+			abundance1[index_i][index_j]+=1
+			genotype_concordance1[index_i][index_j]+=pos_concord1
+			tot +=1
+	print 'tot',tot
+	return abundance1,genotype_concordance1
+
+def calc_pairwise_LD_concordance_within_block_v2(SNP,reference,snp_pos,flip_array):
+	dist_range = [0,5,10,100,1e06]
+	LD_range = np.linspace(0,1,num=21)
+	abundance1 = [[0 for x in range(len(LD_range))] for x in range(len(dist_range))] 
+	genotype_concordance1 = [[0 for x in range(len(LD_range))] for x in range(len(dist_range))] 
+	SNP = SNP[SNP["block_index"]>0]
+	dist = []
+	LD = []
+	concord = []
+	list = SNP.index
+	tot = 0
+	for i in range(len(list)):
+		for j in range(i,len(list)):
+			pos_dist=float(list[j]-list[i])/1000
+			if abs(pos_dist)>1000:
+				break
+			a=SNP["block_index"][list[i]]
+			b=SNP["block_index"][list[j]]
+			if a!=b or a==0 or b==0:
+				continue
+			pos_LD = calc_LD(reference[i],reference[j])
+			if SNP["phase1"][list[i]]==SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip_array[a] ==0 else 0
+			elif SNP["phase1"][list[i]]==1-SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==1-SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip_array[a] ==1 else 0
+			else:
+				pos_concord1 = 0
+			index_i = find_interval(pos_dist,dist_range)
+			index_j = find_interval(pos_LD,map(float,LD_range))
+			abundance1[index_i][index_j]+=1
+			genotype_concordance1[index_i][index_j]+=pos_concord1
+			tot +=1
+	print 'tot',tot
+	return abundance1,genotype_concordance1
+
 if __name__=="__main__":
 	parser = argparse.ArgumentParser(description='assign parental allele in block')
 	parser.add_argument("--chr", dest='chr',help="chromosome")
@@ -532,17 +607,21 @@ if __name__=="__main__":
 		SNP,snp_pos,reference=read_reference_SNP(SNP,haplotype_file,pop_list,pos_index,index_to_pos)
 
 		SNP = SNP[SNP["reference"]==1]
-		print 'reference snp set',len(SNP),len(snp_pos)
+		print 'reference snp set',len(list(SNP.index)),len(snp_pos)
 
-		assert list(SNP.index)==snp_pos
+#		assert list(SNP.index)==snp_pos
 
 		print 'finish load reference haplotypes, LD calulation'
 		# calculate genotype comparison, local MEC, local clone coverage for each SNP
 		if args.within_block=='1':
-			Compare = calc_pairwise_LD_concordance_within_block(SNP,reference,snp_pos,flip_array)
-			dbfile = open('%s_%s_%s_%s_SNP_pair_within_block_pickle' %(SAMPLE,CHROM,args.phase,args.phase_panel),'wb')
-			pickle.dump(Compare,dbfile)
-
+#			Compare = calc_pairwise_LD_concordance_within_block(SNP,reference,snp_pos,flip_array)
+			if args.prism=='1':
+				abundance1,genotype_concordance1=calc_pairwise_LD_concordance_within_block_v2(SNP,reference,snp_pos,flip_array)
+			else:
+				abundance1,genotype_concordance1=calc_pairwise_LD_concordance_v2(SNP,reference,snp_pos,flip)
+			dbfile = open('%s_%s_%s_%s_SNP_pair_LD_within_block_pickle' %(SAMPLE,CHROM,args.phase,args.phase_panel),'wb')
+			pickle.dump(abundance1,dbfile)
+			pickle.dump(genotype_concordance1,dbfile)
 		else:
 			Compare1,Compare2 = calc_pairwise_LD_concordance(SNP,reference,snp_pos,flip,flip_array)
 			dbfile = open('%s_%s_%s_%s_SNP_pair_pickle' %(SAMPLE,CHROM,args.phase,args.phase_panel),'wb')
