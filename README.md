@@ -39,6 +39,7 @@ The vcf.gz and mask.bed.gz serves as input for MSMC
 Assign parental allele within each blocks, calculate switch error, correct some switch errors, make matrix2png plots, assign clone into parental alleles
 
 > python calc_concordance_mec_cor.py
+
 For each pair of SNP, calc their physical distance, bin physical distance into categories. Calculate pairwise LD between each pair of SNP, bin into categories.
 In each category of LD, calc the genotype concordance, also calc the MEC value; draw LD vs genotype concordance, MEC value, and the correlation of genotype concordance and MEC value
 
@@ -47,10 +48,15 @@ In each category of LD, calc the genotype concordance, also calc the MEC value; 
 ## Run PRISM
 
 > python make_prism_input.py
+
 > run_prism.sh
+
 > python prism_posterior.py
+
 > python prism_merge.py
+
 > python prism_interleave_prestep.py
+
 > python prism_interleave_check.py
 
 ## Run PSMC
