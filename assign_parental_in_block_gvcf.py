@@ -1,9 +1,10 @@
 #!/usr/bin/env python
-# python assign_parental_in_block.py
+# python assign_parental_in_block_gvcf_v2.py
 # Shiya Song
 # 29 July 2014
 # Assign parental allele within each blocks, calculate switch error, correct some switch errors, make matrix2png plots, assign clone into parental alleles
-# Used for HG02799, HG03108, NA21302
+# Used for NA19240
+
 import argparse
 import os
 import signal
@@ -42,6 +43,7 @@ def create_snp_list(all_var_file):
 	SNP={}	
 	snp["geno"] = pd.Series(snp_geno,index=snp_pos)
 	snp["phase"] = pd.Series(snp_phase,index=snp_pos)
+	snp["phase_1000G"] = pd.Series(snp_phase,index=snp_pos)
 	SNP[CHROM]= pd.DataFrame(snp)
 	return SNP
 
@@ -60,6 +62,48 @@ def SNPs_not_shown(file):
 			break
 	return SNP_not_shown
 
+def read_heter_snp_1000G(SNP,locus,tag):		# read in hapmap phasing after liftOver
+	tot = 0
+	extra = 0
+	same = 0
+	opposite = 0
+	ABAB = 0
+	for i in locus:
+		chr = i[0]
+		pos = i[2]
+		info1 = i[3]
+		info2 = i[4]
+		if chr!=CHROM and chromOrder[chr]<chromOrder[CHROM]:
+			continue
+		elif chr==CHROM:
+			tot +=1
+			if info1[0]=="0" and info1[2]=="1":
+				ref_alt = info2[0]+info2[2]
+			elif info1[0]=="1" and info1[2]=="0":
+				ref_alt = info2[2]+info2[0]
+			try:
+				snp_info = SNP[chr]["geno"][pos]
+			except KeyError:
+				extra +=1
+				continue
+			if info1[0]!=info1[1] and info1[2]!=info1[3]:
+				ABAB +=1
+				continue
+			if compare_allele(SNP[chr]["geno"][pos],ref_alt) is True:		# compare the child genotype with the ref/alt genotype
+				SNP[chr][tag][pos]=info1[0]+info1[2]
+				same +=1
+			elif compare_allele_v2(SNP[chr]["geno"][pos],ref_alt) is True:	# same genotype but miss up the ref/alt, change it
+				info1 = info1.replace("0","B")
+				info1 = info1.replace("1","D")
+				info1 = info1.replace("B","1")
+				info1 = info1.replace("D","0")
+				SNP[chr][tag][pos]=info1[0]+info1[2]
+				opposite +=1
+		else:
+			break
+	print tag,CHROM,tot,extra,ABAB,same,opposite
+	return SNP
+
 def read_heter_snp_affy(SNP,locus,index):
 	extra = 0
 	different = 0
@@ -70,7 +114,9 @@ def read_heter_snp_affy(SNP,locus,index):
 		pos = i[2]
 		info1 = i[3]
 		info2 = i[4]
-		if chr==CHROM:
+		if chr!=CHROM and chromOrder[chr]<chromOrder[CHROM]:
+			continue
+		elif chr==CHROM:
 			if index == 0:
 				info = info1[0]+info1[2]
 				geno = info2[0]+info2[2]
@@ -108,7 +154,7 @@ def read_heter_snp_affy(SNP,locus,index):
 			else:
 				print "\t".join(i),"\t",SNP[chr]["geno"][pos]
 		else:
-			continue
+			break
 	print 'Affy',CHROM,het,extra,same,different
 	return SNP,same+different
 
@@ -190,7 +236,7 @@ def read_haplotype(hap_file,SNP_not_shown):
 						block = []				# store the position in each block
 						block_list.append(chr+" "+pos)		# store the first position of each block
 						hap = []				# store the 1/0 in each block
-						mec[chr+" "+pos] = [0,0,0,0,0,0,0,0]		# number of snp, number of snp from Affy, number of support from Affy, MEC value before, MEC value after correction, switch_error, switch_error_corrected, source type
+						mec[chr+" "+pos] = [0,0,0,0,0,0,0,0,0,0]		# number of snp, number of snp from Affy, number of support from Affy, MEC value before, MEC value after correction, switch_error, switch_error_corrected, source type
 					else:		# SNPs not shown in the matrix
 						continue
 				else:
@@ -206,6 +252,8 @@ def read_haplotype(hap_file,SNP_not_shown):
 			else:
 				block.append(col[4])	  # just the position of the snp
 				hap.append(int(col[1]))			# "1" or "0" for the first haplotype
+				if decode[int(col[0])]!=0:
+					print 'shown before:', col[0],decode[int(col[0])],pos
 				decode[int(col[0])] = chr +" "+ pos		# link the refhap result (# of the snp) to the first snp of that block	
 	f.close()
 	return BLOCK,block_list,decode,mec
@@ -243,8 +291,6 @@ def read_matrix(matrix_file,BLOCK,decode,decode_pos,mec):
 			break
 		position = []
 		new_position = []
-		new_allele = []
-		new_quality = []
 		quality = col[-1]
 		qual = [ord(m)-33 for m in quality]
 		qual1 = 0
@@ -266,13 +312,11 @@ def read_matrix(matrix_file,BLOCK,decode,decode_pos,mec):
 		for i in range(len(position)):
 			if decode[position[i]] == 0:
 				not_found +=1
-#				print "not_found",position[i]
+				print "not_found",position[i]
 				continue
 			assign = True
 			real_position = decode_pos[position[i]]
 			new_position.append(real_position)			# the actual position of each clone
-#			new_allele.append(allele[i])
-#			new_quality.append(quality[i])
 			if first == True:
 				code = decode[position[i]]
 				if BLOCK[code]["hap"][real_position]!=0.5:
@@ -318,7 +362,10 @@ def read_matrix(matrix_file,BLOCK,decode,decode_pos,mec):
 			name += "_1"
 		else:
 			name += "_2"
-		BLOCK[code][name]= pd.Series(allele,index=new_position)
+		try:
+			BLOCK[code][name]= pd.Series(allele,index=new_position)
+		except AssertionError:
+			print line,allele,new_position,position
 		BLOCK[code][name+"_qual"]= pd.Series([m for m in quality],index=new_position)
 		MEC += mismatch
 		mec[code][3] += mismatch
@@ -398,12 +445,18 @@ def calc_switch_error(SNP,BLOCK,block_list,mec):
 		switch_position=[]
 		hapmap_1KG_position=[]
 		hapmap_phase = 0
+		kG_phase = 0
 		for j in range(len(list)):
 			if SNP[chr]["phase"][list[j]]!="":
 				hapmap_phase+=1
+			if SNP[chr]["phase_1000G"][list[j]]!="":
+				kG_phase +=1
 		if hapmap_phase > 0:
 			phase_tag = "phase"
-			mec[block_list[i]][7]=SOURCE
+			mec[block_list[i]][7]="Hapmap"
+		elif kG_phase > 0:
+			phase_tag = "phase_1000G"
+			mec[block_list[i]][7]="1kG"
 		else:
 			phase_tag = "phase"
 			mec[block_list[i]][7]="None"
@@ -640,7 +693,7 @@ def separate_clone_into_hap(BLOCK,block_list,mec,decode_pos):
 				if os.path.isdir(args.pool_dir+'%s/' %(SAMPLE) +pool + '/hap_bam') is False:
 					os.popen('mkdir '+args.pool_dir+'%s/' %(SAMPLE) +pool + '/hap_bam')
 				if mec[block_list[i]][1]!=0:
-					file = args.pool_dir+'%s/' %(SAMPLE) +pool + '/hap_bam/' + pool + "." + hap+"."+CHROM + ".gvcf.bed"
+					file = args.pool_dir+'%s/' %(SAMPLE) +pool + '/hap_bam/' + pool + "." + hap+"."+CHROM + ".bed"
 					f_out = open(file,"a")
 					if hap == "hap1":
 						print >>f_out, "%s\t%s\t%s\t%s\t%i\t%i\t%s\t%s\t255,0,0" %(chr,pos1,pos2,clone,clone_mec,clone_length,pos1,pos2)
@@ -650,7 +703,7 @@ def separate_clone_into_hap(BLOCK,block_list,mec,decode_pos):
 						print >>f_out, "%s\t%s\t%s\t%s\t%i\t%i\t%s\t%s\t0,0,255" %(chr,pos1,pos2,clone,clone_mec,clone_length,pos1,pos2)
 						print >>f_hap2,"%s\t%s\t%s\t%s\t%i\t%i\t%s\t%s\t0,0,255" %(chr,pos1,pos2,clone,clone_mec,clone_length,pos1,pos2)
 				else:
-					file = args.pool_dir+'%s/' %(SAMPLE) +pool + '/hap_bam/' + pool + ".unknown_" + hap+"."+CHROM + ".gvcf.bed"
+					file = args.pool_dir+'%s/' %(SAMPLE) +pool + '/hap_bam/' + pool + ".unknown_" + hap+"."+CHROM + ".bed"
 					f_out = open(file,"a")
 					if hap == "hap1":
 						print >>f_out, "%s\t%s\t%s\t%s\t%i\t%i\t%s\t%s\t255,0,0" %(chr,pos1,pos2,clone,clone_mec,clone_length,pos1,pos2)
@@ -674,7 +727,7 @@ def make_track(hap_file,block_list,mec):
 			chr = ""
 			continue
 		elif line[0] == "*":
-			print >>f_out,"%s\t%s\t%s\t%s\t%i\t%i\t%i\t%i\t%i\t%i\t%i" %(chr,start,end,MEC[7],MEC[0],MEC[1],MEC[2],MEC[3],MEC[4],MEC[5],MEC[6])
+			print >>f_out,"%s\t%s\t%s\t%s\t%i\t%i\t%i\t%i\t%i\t%i\t%i\t%i\t%i" %(chr,start,end,MEC[7],MEC[0],MEC[1],MEC[2],MEC[3],MEC[4],MEC[5],MEC[6],MEC[8],MEC[9])
 		elif start == 0:
 			chr = line.split("\t")[3]
 			if chr!=CHROM:
@@ -700,6 +753,30 @@ def detect_hapmap_wrong(BLOCK,block_list,mec):
 			if math.isnan(float(BLOCK[block_list[i]]["transmit"][j])) is False:
 				if BLOCK[block_list[i]]["hap"][j]!=int(BLOCK[block_list[i]]["transmit"][j]):
 					print >>f2,"%s\t%i\t%s\t%i\t%s\t" %(chr,int(pos),j,BLOCK[block_list[i]]["hap"][j],BLOCK[block_list[i]]["transmit"][j])
+
+def compare_with_1000G(BLOCK,block_list,SNP,mec):
+	unknown = 0			# our data is unknown
+	hapmap_same = 0		# our data is contradictory with 1000G, but hapmap and 1000G are the same
+	for i in range(len(block_list)):
+		chr = block_list[i].split(" ")[0]
+		pos = block_list[i].split(" ")[1]
+		match = 0			# same with 1000G
+		appear = 0			# SNP exists in 1000G
+		list = BLOCK[block_list[i]].index
+		for j in range(len(list)):
+			if SNP[chr]["phase_1000G"][list[j]]!="":
+				appear +=1
+				if int(SNP[chr]["phase_1000G"][list[j]][0])==BLOCK[block_list[i]]["hap"][list[j]]:
+					match +=1
+				elif BLOCK[block_list[i]]["hap"][list[j]]==0.5:
+					unknown +=1
+				elif math.isnan(float(BLOCK[block_list[i]]["transmit"][j])) is False:
+					if int(SNP[chr]["phase_1000G"][list[j]][0])==int(BLOCK[block_list[i]]["transmit"][j]) and mec[block_list[i]][7]=="Hapmap":
+						hapmap_same +=1
+		mec[block_list[i]][8]+=appear
+		mec[block_list[i]][9]+=match
+	print "Unknown in our phasing",unknown,"Contradict with our phasing but same with Hapmap",hapmap_same
+	return mec
 
 def read_hap(BLOCK,block_list,mec):
 	snp_decode={}
@@ -757,6 +834,13 @@ def write_vcf(wgs_vcf,snp_decode):
 						print >>f_out,"%s\t.\t%s\t%s" %("\t".join(line1[:7]),line1[8],":".join(info))
 					except KeyError:
 						print >>f_out,"%s\t.\t%s\t%s" %("\t".join(line1[:7]),line1[8],":".join(info))
+			elif info[0]=="1/1":
+				if len(ref)!=1 or len(alt[0])!=1:
+					continue
+				info[0] = "1|1"
+				print >>f_out,"%s\t.\t%s\t%s" %("\t".join(line1[:7]),line1[8],":".join(info))
+			else:
+				print line
 		else:
 			break
 
@@ -812,16 +896,16 @@ def read_ped(file):
 	return family,family[2],family[3],index-1
 
 def make_prism_input(BLOCK,mec):
-	f = open("Prism/%s_new/%s.%s.positions" %(SAMPLE,SAMPLE,CHROM),'r')
+	f = open("Prism/%s/%s.%s.positions" %(SAMPLE,SAMPLE,CHROM),'r')
 	f_track = "BLOCK/%s_gvcf/%s_refhap_track_info_" %(SAMPLE,SAMPLE)+CHROM+".txt"
 	position = []
 	for line in f:
 		position.append(int(line.strip().split(',')[0]))
 	snp_decode={}
-	f_out1 = open("Prism/%s_new/%s.%s.local.blocks.all" %(SAMPLE,SAMPLE,CHROM),"w")
-	f_out2 = open("Prism/%s_new/%s.%s.local.blocks" %(SAMPLE,SAMPLE,CHROM),"w")
-	f_out3 = open("Prism/%s_new/%s.%s.local.interleaving.blocks" %(SAMPLE,SAMPLE,CHROM),"w")
-	f_out4 = open("Prism/%s_new/%s.%s.info" %(SAMPLE,SAMPLE,CHROM),"w")
+	f_out1 = open("Prism/%s/%s.%s.local.blocks.all" %(SAMPLE,SAMPLE,CHROM),"w")
+	f_out2 = open("Prism/%s/%s.%s.local.blocks" %(SAMPLE,SAMPLE,CHROM),"w")
+	f_out3 = open("Prism/%s/%s.%s.local.interleaving.blocks" %(SAMPLE,SAMPLE,CHROM),"w")
+	f_out4 = open("Prism/%s/%s.%s.info" %(SAMPLE,SAMPLE,CHROM),"w")
 	id = 0
 	last_item = ""
 	prev_none = False
@@ -841,8 +925,7 @@ def make_prism_input(BLOCK,mec):
 			current_range=(pos,pos2)
 			if int(current_range[0])<int(prev_range[1]):
 				interleaving = True
-			else:
-				prev_range=(pos,pos2)
+			prev_range=(pos,pos2)
 		last_pos = pos
 		string = []
 		for j in BLOCK[block_name].index:
@@ -870,6 +953,7 @@ def make_prism_input(BLOCK,mec):
 				print >>f_out4,"%s\t%s\t%s\t%s\tinterleaving" %(chr,str(j),str(j),id)
 				snp_decode[j]='0/1'
 		if len(string)==0:
+			id +=1
 			print 'miss block',block_name
 			print >>f_out4,"%s\t%s\t%s\t%s\t%s" %(chr,pos,pos2,id,mec[block_name][7]+",drop")
 			continue
@@ -919,7 +1003,7 @@ if __name__=="__main__":
 	POP = args.pop
 	all_var_file= args.sample+"_combined_genome_allvars_gvcf_SNP"
 	
-	'''
+
 	SNP = create_snp_list(all_var_file)
 	print "SNP list set up"
 	
@@ -935,16 +1019,11 @@ if __name__=="__main__":
 		print "Number of SNPs used in %s:" %(SOURCE),others
 	
 	if SOURCE == 'HapMap':
-#	read the locus from HapMap	
-		Affy_file = args.hapmap_dir + '%s/%s_phased_snp.txt.gz' %(POP,POP)
-		header = gzip.open(args.hapmap_dir + '%s/hapmap3_r2_b36_fwd.consensus.qc.poly.chr1_%s.phased.gz' %(POP,POP.lower()),'r').readline().strip().split()
-		index_dad = header.index(dad+'_A')+1
-		index_mom = header.index(mom+'_A')+1
-		print dad,mom,index_dad,index_mom
-		SNP,ABAB,same =read_heter_snp_hapmap(SNP,BedIterator(Affy_file),index_dad,index_mom)
-		print "SNP info stored"
-		print "Number of SNPs used in %s:" %(SOURCE),same
-	
+		KG_file="/home/jmkidd/kidd-lab/genomes/snp-sets/1KG/trio-sets/snp/NA19240_heter_hg19.txt"
+		SNP = read_heter_snp_1000G(SNP,BedIterator(KG_file),"phase_1000G")
+#	read the locus from HapMap
+		hapmap_file = "/home/jmkidd/kidd-lab/genomes/snp-sets/hapmap2/rel22/NA19240_genotype_heter3_hg19.txt"
+		SNP = read_heter_snp_1000G(SNP,BedIterator(hapmap_file),"phase")
 
 	snp_not_shown_file = args.sample + "_gvcf_SNPs_not_shown"
 	SNP_not_shown=SNPs_not_shown(snp_not_shown_file)
@@ -955,41 +1034,43 @@ if __name__=="__main__":
 	print "haplotype info stored"
 	print "Number of blocks",len(block_list)
 	print block_list[0],block_list[1]
+	'''
 	decode_pos = decode_number_pos(all_var_file)
 	matrix_file = args.sample + '_all_clone_all_fragment_gvcf_snp_sorted.matrix'
 	MEC,mec,BLOCK=read_matrix(matrix_file,BLOCK,decode,decode_pos,mec)
 	print BLOCK[block_list[0]]
 	
-
 	BLOCK,mec,switch_error=calc_switch_error(SNP,BLOCK,block_list,mec)
 	print "Switch_error",switch_error
-	detect_hapmap_wrong(BLOCK,block_list,mec)
+#	detect_hapmap_wrong(BLOCK,block_list,mec)
 	
-	make_matrix2png(BLOCK,block_list)
-	run_matrix2png()
+#	make_matrix2png(BLOCK,block_list)
+#	run_matrix2png()
 
-	dbfile=open('BLOCK/%s_gvcf/%s_BLOCK_' %(SAMPLE,SAMPLE) +CHROM+'_pickle','wb')
+	dbfile=open('BLOCK/%s_gvcf/%s_BLOCK_' %(SAMPLE,SAMPLE) +CHROM+'_v2_pickle','wb')
 	pickle.dump(BLOCK,dbfile) 
 	pickle.dump(block_list,dbfile)
 	pickle.dump(mec,dbfile)
-	mec = separate_clone_into_hap(BLOCK,block_list,mec,decode_pos)
+#	mec = separate_clone_into_hap(BLOCK,block_list,mec,decode_pos)
 #	mec = compare_with_1000G(BLOCK,block_list,SNP,mec)
 	
 	haplotype_file = 'Refhap/%s_%s.gvcf.snp.haplotype_detail' %(SAMPLE,CHROM)
 	make_track(haplotype_file,block_list,mec)
-	'''
+
 	dbfile=open('BLOCK/%s_gvcf/%s_BLOCK_' %(SAMPLE,SAMPLE) +CHROM+'_pickle','rb')
 	BLOCK=pickle.load(dbfile) 
 	block_list=pickle.load(dbfile)
 	mec=pickle.load(dbfile)
 
-	snp_decode = read_hap(BLOCK,block_list,mec)
-#	snp_decode = make_prism_input(BLOCK,mec)
+	if args.chr=='chrX':
+		snp_decode=read_hap(BLOCK,block_list,mec)
+	else:
+#		snp_decode = make_prism_input(BLOCK,mec)
+		snp_decode=read_hap(BLOCK,block_list,mec)
 	wgs_vcf = args.wgs_dir + SAMPLE+ '/gVCF_calls/%s.%s.vcf.gz' %(SAMPLE,CHROM)
 	write_vcf_v2(wgs_vcf,snp_decode)
 	
 #	print "Summary info as below:"
 #	print "Total number of blocks in ",chr,":",len(block_list)
 #	print "Total Switch_error",switch_error
-
-	
+	'''

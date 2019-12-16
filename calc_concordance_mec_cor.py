@@ -1,12 +1,14 @@
 #!/usr/bin/env python
-# python calc_concordance_mec_cor.py
+# python calc_concordance_mec_cor_v2.py
 # Shiya Song
-# 7 Jan 2015
+# 15 Jan 2015
 # For each pair of SNP, calc their physical distance, bin physical distance into categories. 
 # Calculate pairwise LD between each pair of SNP, bin into categories.
 # In each category of LD, calc the genotype concordance, also calc the MEC value
 # draw LD vs genotype concordance, MEC value, and the correlation of genotype concordance and MEC value
-# only for adjacent snps
+# For all possible pair of snp, either within same block or within a certian distance(1MB)
+# For HapMap data
+
 import sys
 from NGS_utils import *
 import argparse
@@ -19,6 +21,10 @@ import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
 import gzip
 import pickle
+
+chromLenFile = '/home/jmkidd/kidd-lab/genomes/hg19/hg19-EBV-fos-ecoli/hg19.fa.fai'
+chromLens = genutils.read_chrom_len(chromLenFile)
+chromOrder = get_chromOrder("human")
 
 def create_snp_list(file1):
 	snp_pos = []
@@ -42,6 +48,8 @@ def create_snp_list(file1):
 	return snp
 
 def read_snp(SNP,file2):		# read in hapmap phasing after liftOver
+	tot = 0
+	same = 0
 	for i in VcfIterator(file2):
 		if i[4] is True and i[3][0]!=i[3][1]: 
 			try:
@@ -61,15 +69,59 @@ def read_snp(SNP,file2):		# read in hapmap phasing after liftOver
 					elif i[3][0]==2:
 						phase.append(1)
 					SNP["phase2"][i[1]]=phase[0]   # store the phasing information,just one haplotype, 0 or 1
+					tot +=1
+					if SNP["phase2"][i[1]]==SNP["phase1"][i[1]]:
+						same +=1
 				else:
 					print i,SNP["geno"][i[1]]
 			else:
 				assert i[3][0]!=i[3][1]
 				SNP["phase2"][i[1]]=i[3][0]		# store the phasing information,just one haplotype, 0 or 1
-	return SNP
+				tot +=1
+				if SNP["phase2"][i[1]]==SNP["phase1"][i[1]]:
+					same +=1
+	flip = 1 if float(same)/tot<0.5 else 0 # need to flip it
+	print tot,same,flip
+	return SNP,flip
+
+def read_heter_snp_hapmap(SNP,hap_file,index):		
+	het = 0
+	tot = 0
+	same = 0
+	f=gzip.open(hap_file,'r')
+	for line in f:
+		line = line.strip().split(' ')
+		chr = line[0]
+		pos = int(line[2])
+		parental = line[index]+line[index+1]
+		if chr!=CHROM and chromOrder[chr]<chromOrder[CHROM]:
+			continue
+		elif chr==CHROM:
+			if parental[0]!=parental[1]:
+				het +=1
+			else:
+				continue
+			try:
+				snp_info = SNP["geno"][pos]
+			except KeyError:
+				continue
+			map = {SNP["geno"][pos][0]:'0',SNP["geno"][pos][1]:'1'}
+			try:
+				info1 = map[parental[0]]
+				SNP["phase2"][pos]=info1
+			except KeyError:
+				continue
+			if SNP["phase2"][pos]==SNP["phase1"][pos]:
+				same +=1
+			tot +=1
+		else:
+			break
+	flip = 1 if float(same)/tot<0.5 else 0 # need to flip it
+	print 'HapMap',CHROM,tot,same,flip
+	return SNP,flip
 
 
-def merge_BLOCK_SNP(block_file,BLOCK,SNP):
+def merge_BLOCK_SNP(block_file,SNP):
 	block_list_left = []
 	block_list_right = []
 	for i in BedIterator(block_file):
@@ -97,62 +149,65 @@ def merge_BLOCK_SNP(block_file,BLOCK,SNP):
 #			print 'Assertion Error',list[j],block_list_left[find],block_list_right[find]
 			block_index.append(-1)
 	print len(list),'-1:',block_index.count(-1)
-	list = SNP.index
+	SNP["block_index"] = pd.Series(block_index,index=list)   # store the index of the block that this snp belongs to 
+	return SNP
+
+def determine_flip(SNP,block):
 	tot = 0
 	same = 0
-	is_switch = []
-	label = []
-	switch = []
-	switch_position = []
-	block_list_new = []
-	flip_array = []    # just within this block, if flip is necessary
-	start = True
-	position = []
-	for j in range(len(list)):
-		if block_index[j]==-1:
-			continue
-		if SNP["phase1"][list[j]]!=-1 and SNP["phase2"][list[j]]!=-1:
-			if SNP["phase1"][list[j]] == SNP["phase2"][list[j]]:
-				same +=1
-			tot +=1
-			if start is True:
-				cur_label=block_index[j]
-				start = False
-				position=[list[j]]
-				phase1=[SNP["phase1"][list[j]]]
-				phase2=[SNP["phase2"][list[j]]]
-				continue
-			if block_index[j]==cur_label:
-				position.append(list[j])
-				phase1.append(SNP["phase1"][list[j]])
-				phase2.append(SNP["phase2"][list[j]])
-			else:
-				cur_block=CHROM+" "+str(block_list_left[cur_label])
-				block_list_new.append(cur_block)
-				BLOCK[cur_block]["phase1"]=pd.Series(phase1,index=map(str,position))
-				BLOCK[cur_block]["phase2"]=pd.Series(phase2,index=map(str,position))
-				m = [abs(a-b) for a,b in zip(phase1,phase2)]
-				if float(sum(m))/len(m)>0.5:
-					flip_array.append(1)
-				else:
-					flip_array.append(0)
-				cur_label=block_index[j]
-				position=[list[j]]
-				phase1=[SNP["phase1"][list[j]]]
-				phase2=[SNP["phase2"][list[j]]]
-	if len(position)!=0:
-		cur_block=CHROM+" "+str(block_list_left[cur_label])
-		block_list_new.append(cur_block)
-		BLOCK[cur_block]["phase1"]=pd.Series(phase1,index=map(str,position))
-		BLOCK[cur_block]["phase2"]=pd.Series(phase2,index=map(str,position))
-		m = [abs(a-b) for a,b in zip(phase1,phase2)]
-		if float(sum(m))/len(m)>0.5:
-			flip_array.append(1)
-		else:
-			flip_array.append(0)
-	print 'tot',tot,'same',same,float(same)/tot
+	for pos in block:
+		tot +=1
+		if SNP["phase1"][pos]==SNP["phase2"][pos]:
+			same +=1
 	flip = 1 if float(same)/tot<0.5 else 0 # need to flip it
-	return BLOCK,block_list_new,flip,flip_array
+	return flip
+
+def read_haplotype(hap_file,SNP):
+	list = SNP.index
+	SNP["block_index"] = pd.Series(map(int,np.zeros(len(list))),index=list)   # store the index of the block that this snp belongs to
+	f = open(hap_file,"r")
+	flip_array = {}
+	start = True
+	for line in f:
+		line = line.strip()
+		if line[0]=="B":
+			start = True
+		elif line[0]=="*":
+			if start == False:
+				if len(block)!=0:
+					flip_array[int(pos)]= determine_flip(SNP,block)
+				else:
+					flip_array[int(pos)] = 0
+		else:
+			col = line.split("\t")
+			if start == True:
+				pos = col[4]
+				chr = col[3]
+				if chr!=CHROM and chromOrder[chr]<chromOrder[CHROM]:
+					continue
+				elif chr==CHROM:
+					start = False			
+					pos = col[4]
+					block = []				# store the position in each block
+				else:
+					break
+			if col[1] == "-":
+				try:
+					m = SNP["block_index"][int(col[4])]
+				except KeyError:
+					continue
+				if m ==0:
+					block.append(int(col[4]))
+					SNP["block_index"][int(col[4])]=int(pos)
+			else:
+				try:
+					m = SNP["block_index"][int(col[4])]
+				except KeyError:
+					continue
+				block.append(int(col[4]))
+				SNP["block_index"][int(col[4])]=int(pos)		# link the refhap result (# of the snp) to the first snp of that block	
+	f.close()
+	return SNP,flip_array
 
 def read_sample(file,popname):
 	pop_list=[]
@@ -187,11 +242,6 @@ def read_1000G_legend(legend_file,snp_pos_list):
 			pos_index.append(0)
 			index_to_pos.append(pos)
 			continue
-#		find = find_pos(pos,map(int,snp_pos_list))
-#		if find<=0:
-#			pos_index.append(0)
-#			index_to_pos.append(pos)
-#			continue
 		try:
 			m = snp[pos]
 		except KeyError:
@@ -209,47 +259,62 @@ def read_reference_SNP(SNP,hap_file,pop_list,pos_index,index_to_pos):
 	snp_pos = []
 	snp_LD = []
 	prev_reference_hap=[]
+	reference = []
 	first = True
 	for i in BedIterator(hap_file):
 		if pos_index[index]==1:
 			pos = index_to_pos[index]
-			try:
-				m = SNP["phase1"][int(pos)]
-			except KeyError:
-				continue
 			reference_hap = []
 			for j in pop_list:
 				reference_hap.append(i[j*2])
 				reference_hap.append(i[j*2+1])
 			snp_pos.append(pos)
 			reference_hap = map(int,reference_hap)
-			if first is True:
-				prev_reference_hap = reference_hap
-				first = False
-			else:
-				LD = calc_LD(prev_reference_hap,reference_hap)
-				snp_LD.append(LD)
-				prev_reference_hap = reference_hap
+			reference.append(reference_hap)
 		index+=1
 		if index%10000==0:
 			print index,'done'
-	print np.mean(snp_LD),np.std(snp_LD),snp_LD.count(0),snp_LD.count(1),min(snp_LD),max(snp_LD)
-	snp_LD.append(snp_LD[-1])
 	try:
-		SNP["LD"] = pd.Series(snp_LD,index=snp_pos)
+		SNP["reference"] = pd.Series([1 for m in snp_pos],index=snp_pos)
 	except TypeError:
-		print 'TypeError,LD'
-		new_column = pd.Series(snp_LD,index=snp_pos)
-		SNP["LD"] = new_column.reset_index(level=0, drop=True)
+		new_column = pd.Series([1 for m in snp_pos],index=snp_pos)
+		SNP["reference"] = new_column.reset_index(level=0, drop=True)
+	return SNP,snp_pos,reference
+
+def read_reference_SNP_v2(SNP,hap_file):
+	index = 0
+	list = SNP.index
+	snp_pos = []
+	snp_LD = []
+	prev_reference_hap=[]
+	reference = []
+	first = True
+	f=gzip.open(hap_file,'r')
+	for line in f:
+		line = line.strip().split(' ')
+		pos = int(line[2])
+		chr = line[0]
+		if chr!=CHROM and chromOrder[chr]<chromOrder[CHROM]:
+			continue
+		elif chr==CHROM:
+			reference_hap = line[3:]
+			try:
+				code_map = {SNP["geno"][pos][0]:0,SNP["geno"][pos][1]:1}
+				reference_hap = [code_map[i] for i in reference_hap]
+				reference.append(reference_hap)
+				snp_pos.append(pos)
+			except KeyError:
+				continue
+		index+=1
+		if index%10000==0:
+			print index,'done'
 	try:
-		SNP["phase_compare"] = pd.Series(map(int,np.zeros(len(snp_pos))),index=snp_pos)
+		SNP["reference"] = pd.Series([1 for m in snp_pos],index=snp_pos)
 	except TypeError:
-		print 'TypeError,phase_compare'
-		new_column = pd.Series(map(int,np.zeros(len(snp_pos))),index=snp_pos)
-		SNP["phase_compare"] = new_column.reset_index(level=0, drop=True)
-#	SNP["MEC"] = pd.Series(map(int,list(np.zeros(len(snp_pos)))),index=snp_pos)
-#	SNP["clone_num"] = pd.Series(map(int,list(np.zeros(len(snp_pos)))),index=snp_pos)
-	return SNP
+		new_column = pd.Series([1 for m in snp_pos],index=snp_pos)
+		SNP["reference"] = new_column.reset_index(level=0, drop=True)
+		print 'TypeError'
+	return SNP,snp_pos,reference
 
 def calc_LD(hA,hB):
 	pA=float(hA.count(0))/len(hA)
@@ -263,13 +328,6 @@ def calc_LD(hA,hB):
 #		print D,pA,pB
 		Dprime = D/min((1-pA)*pB,pA*(1-pB)) if D>=0 else -D/min((1-pA)*pA,pB*(1-pB))
 	return Dprime
-
-def get_snp_pos(BLOCK,block_list_new):
-	snp_pos_list = []
-	for i in block_list_new:
-		BLOCK[i]=BLOCK[i][BLOCK[i]["phase1"]>=0]
-		snp_pos_list += list(BLOCK[i].index)
-	return snp_pos_list
 
 def determine_clone_hap(block,clone,pos_list,mec_vec,count_vec):
 	match = 0
@@ -358,7 +416,7 @@ def calc_BLOCK_mec(BLOCK,block_list_new,SNP,flip,flip_array):
 
 def make_range():
 	dist_range = [0,5,10,100,1e06]
-	LD_range = np.linspace(0,1,num=21)
+	LD_range = np.linspace(0,1,num=51)
 
 def find_interval(pos,list):
 	left = 0
@@ -408,6 +466,150 @@ def make_curve(SNP,dist_range,LD_range):
 	plt.show
 #	fig.savefig('%s_%s_LD_curve.pdf' %(SAMPLE,CHROM))
 
+def calc_pairwise_LD_concordance(SNP,reference,snp_pos,flip,flip_array):
+	dist1 = []
+	LD1 = []
+	concord1 = []
+	dist2 = []
+	LD2 = []
+	concord2 = []
+	list = SNP.index
+	for i in range(len(list)):
+		for j in range(i+1,len(list)):
+			pos_dist=list[j]-list[i]
+			if abs(pos_dist)>1000000:
+				break
+			pos_LD = calc_LD(reference[i],reference[j])
+			if SNP["phase1"][list[i]]==SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip ==0 else 0
+			elif SNP["phase1"][list[i]]==1-SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==1-SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip ==1 else 0
+			else:
+				pos_concord1 = 0
+			dist1.append(pos_dist)
+			LD1.append(pos_LD)
+			concord1.append(pos_concord1)
+			a=SNP["block_index"][list[i]]
+			b=SNP["block_index"][list[j]]
+			if a!=b or a==0 or b==0:
+				continue
+			if SNP["phase1"][list[i]]==SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==SNP["phase2"][list[j]]:
+				pos_concord2 = 1 if flip_array[a] ==0 else 0
+			elif SNP["phase1"][list[i]]==1-SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==1-SNP["phase2"][list[j]]:
+				try:
+					pos_concord2 = 1 if flip_array[a] ==1 else 0
+				except KeyError:
+					print list[i],list[j],a,b
+			else:
+				pos_concord2 = 0
+			dist2.append(pos_dist)
+			LD2.append(pos_LD)
+			concord2.append(pos_concord2)
+	Compare1 = pd.DataFrame({'dist':dist1,'LD':LD1,'concord':concord1})
+	Compare2 = pd.DataFrame({'dist':dist2,'LD':LD2,'concord':concord2})
+	print 'length',len(dist1),len(dist2)
+	return Compare1,Compare2
+
+def calc_pairwise_LD_concordance_within_block(SNP,reference,snp_pos,flip_array):
+	SNP = SNP[SNP["block_index"]>0]
+	dist = []
+	LD = []
+	concord = []
+	list = SNP.index
+	for i in range(len(list)):
+		for j in range(i,len(list)):
+			pos_dist=list[j]-list[i]
+			if abs(pos_dist)>1000000:
+				break
+			a=SNP["block_index"][list[i]]
+			b=SNP["block_index"][list[j]]
+			if a!=b or a==0 or b==0:
+				continue
+			pos_LD = calc_LD(reference[i],reference[j])
+			if SNP["phase1"][list[i]]==SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip_array[a] ==0 else 0
+			elif SNP["phase1"][list[i]]==1-SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==1-SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip_array[a] ==1 else 0
+			else:
+				pos_concord1 = 0
+			dist.append(pos_dist)
+			LD.append(pos_LD)
+			concord.append(pos_concord1)
+	Compare = pd.DataFrame({'dist':dist,'LD':LD,'concord':concord})
+	print 'length',len(dist)
+	return Compare
+
+def calc_pairwise_LD_concordance_v2(SNP,reference,snp_pos,flip):   # use flip instead of flip_array
+	dist_range = [0,5,10,100,1e06]
+	LD_range = np.linspace(0,1,num=21)
+	abundance1 = [[0 for x in range(len(LD_range))] for x in range(len(dist_range))] 
+	genotype_concordance1 = [[0 for x in range(len(LD_range))] for x in range(len(dist_range))] 
+	SNP = SNP[SNP["block_index"]>0]
+	dist = []
+	LD = []
+	concord = []
+	list = SNP.index
+	tot = 0
+	for i in range(len(list)):
+		for j in range(i,len(list)):
+			pos_dist=float(list[j]-list[i])/1000
+			if abs(pos_dist)>1000:
+				break
+			a=SNP["block_index"][list[i]]
+			b=SNP["block_index"][list[j]]
+			if a!=b or a==0 or b==0:
+				continue
+			pos_LD = calc_LD(reference[i],reference[j])
+			if SNP["phase1"][list[i]]==SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip ==0 else 0
+			elif SNP["phase1"][list[i]]==1-SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==1-SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip ==1 else 0
+			else:
+				pos_concord1 = 0
+			index_i = find_interval(pos_dist,dist_range)
+			index_j = find_interval(pos_LD,map(float,LD_range))
+			abundance1[index_i][index_j]+=1
+			genotype_concordance1[index_i][index_j]+=pos_concord1
+			tot +=1
+	print 'tot',tot
+	return abundance1,genotype_concordance1
+
+def calc_pairwise_LD_concordance_within_block_v2(SNP,reference,snp_pos,flip_array):
+	dist_range = [0,5,10,100,1e06]
+	LD_range = np.linspace(0,1,num=51)
+	abundance1 = [[0 for x in range(len(LD_range))] for x in range(len(dist_range))] 
+	genotype_concordance1 = [[0 for x in range(len(LD_range))] for x in range(len(dist_range))] 
+	SNP = SNP[SNP["block_index"]>0]
+	dist = []
+	LD = []
+	concord = []
+	list = SNP.index
+	tot = 0
+	for i in range(len(list)):
+		for j in range(i,len(list)):
+			pos_dist=float(list[j]-list[i])/1000
+			if abs(pos_dist)>1000:
+				break
+			a=SNP["block_index"][list[i]]
+			b=SNP["block_index"][list[j]]
+			if a!=b or a==0 or b==0:
+				continue
+			pos_LD = calc_LD(reference[i],reference[j])
+			if SNP["phase1"][list[i]]==SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip_array[a] ==0 else 0
+			elif SNP["phase1"][list[i]]==1-SNP["phase2"][list[i]] and SNP["phase1"][list[j]]==1-SNP["phase2"][list[j]]:
+				pos_concord1 = 1 if flip_array[a] ==1 else 0
+			else:
+				pos_concord1 = 0
+			index_i = find_interval(pos_dist,dist_range)
+			index_j = find_interval(pos_LD,map(float,LD_range))
+			abundance1[index_i][index_j]+=1
+			genotype_concordance1[index_i][index_j]+=pos_concord1
+			tot +=1
+	print 'tot',tot
+	return abundance1,genotype_concordance1
+
+
 if __name__=="__main__":
 	parser = argparse.ArgumentParser(description='assign parental allele in block')
 	parser.add_argument("--chr", dest='chr',help="chromosome")
@@ -419,15 +621,12 @@ if __name__=="__main__":
 	parser.add_argument("--ref_dir", dest='ref_dir',default='/home/jmkidd/kidd-lab/genomes/snp-sets/1KG/phase1/ALL.integrated_phase1_SHAPEIT_16-06-14.nomono/',help="directory for 1KG reference file")
 	parser.add_argument("--pop", dest='pop',help="population name")
 	parser.add_argument("--analyze_dir", dest='analyze_dir',default='/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/analysis/',help="directory for BLOCK file")
+	parser.add_argument("--within_block",dest='within_block',default=0)
+	parser.add_argument("--hapmap_dir",dest='hapmap_dir',default='/home/jmkidd/kidd-lab/genomes/snp-sets/hapmap3/',help='HapMap directory')
 
 	args = parser.parse_args()
 	SAMPLE = args.sample
-#	f_out1 = open(args.sample+"_shapeit_switch_error_mec.txt","w")
-#	f_out2 = open(args.sample+"_1KGphase3_switch_error_mec.txt","w")
-#	switch_error_file1=args.sample+"_shapeit_switch_error.txt"
-#	switch_error_file2=args.sample+"_1KGphase3_switch_error.txt"
-
-#	for chr in range(11,22):
+	POP = args.pop
 	if True:
 		CHROM = 'chr'+str(args.chr)
 		if args.prism=='1':
@@ -445,25 +644,39 @@ if __name__=="__main__":
 				file2 = '%s%s/gVCF_calls/%s.%s.1KGphase3.vcf.gz' %(args.wgs_dir,args.sample,args.sample,CHROM)
 				if args.sample=='NA12878':
 					file2 = '%s%s/all_sites/%s.%s.1KGphase3.vcf.gz' %(args.wgs_dir,args.sample,args.sample,CHROM)
+		elif args.phase=='hapmap':
+			file2= args.hapmap_dir + '%s/%s_phased_snp.txt.gz' %(POP,POP)
 		else:
 			file2 = '/home/jmkidd/kidd-lab/genomes/snp-sets/1KG/phase3/%s/%s.%s.1KGphase3.snp.vcf.gz' %(args.sample,args.sample,CHROM)
+		
 		SNP = create_snp_list(file1)
-		SNP = read_snp(SNP,file2)
-		dbfile=open('%sBLOCK/%s_gvcf/%s_BLOCK_' %(args.analyze_dir,SAMPLE,SAMPLE) +CHROM+'_pickle','rb')
-		BLOCK=pickle.load(dbfile) 
-		block_list=pickle.load(dbfile)
-#		mec=pickle.load(dbfile)
+		
+		if args.phase=='hapmap':    #	read the locus from HapMap	
+			header = gzip.open(args.hapmap_dir + '%s/hapmap3_r2_b36_fwd.consensus.qc.poly.chr1_%s.unr.phased.gz' %(POP,POP.lower()),'r').readline().strip().split()
+			index_sample = header.index(args.sample+'_A')+1
+			print 'index',index_sample
+			SNP,flip =read_heter_snp_hapmap(SNP,file2,index_sample)
+		else:
+			SNP,flip = read_snp(SNP,file2)
 
-		print 'finish loading BLOCK'
+		print 'original snp set',len(SNP)
+		SNP = SNP[SNP["phase1"]>=0]
+		print 'phase1 snp set',len(SNP)
+		SNP = SNP[SNP["phase2"]>=0]
+		print 'phase2 snp set',len(SNP)
 
-		block_file = '/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/analysis/BLOCK/%s_gvcf/%s_refhap_track_info_%s.txt' %(args.sample,args.sample,CHROM)
+		print 'finish loading SNP'
+		print 'flip',flip
 
-		BLOCK,block_list_new,flip,flip_array = merge_BLOCK_SNP(block_file,BLOCK,SNP)
-		print 'flip:',flip,flip_array.count(0),flip_array.count(1)
+#		block_file = '/home/jmkidd/kidd-lab/jmkidd-projects/additional-fosmid-pools/results/analysis/BLOCK/%s_gvcf/%s_refhap_track_info_%s.txt' %(args.sample,args.sample,CHROM)
 
-		snp_pos_list = list(SNP.index)
+#		SNP = merge_BLOCK_SNP(block_file,SNP)
+
+		hap_file = args.analyze_dir+args.sample+'_gvcf_snp_haplotype_detail'
+		SNP,flip_array = read_haplotype(hap_file,SNP)
 
 		# read reference haplotypes and calculate LD
+
 		if args.phase_panel=='1KGphase3':
 			sample_file = '/home/jmkidd/kidd-lab/genomes/snp-sets/1KG/phase3/1000GP_Phase3/1000GP_Phase3.sample'
 			haplotype_file = '/home/jmkidd/kidd-lab/genomes/snp-sets/1KG/phase3/1000GP_Phase3/1000GP_Phase3_%s.hap.gz' %(CHROM)
@@ -473,19 +686,39 @@ if __name__=="__main__":
 			haplotype_file = args.ref_dir+'ALL.%s.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.nomono.haplotypes.gz' %(CHROM)
 			legend_file = args.ref_dir + 'ALL.%s.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.nomono.legend.gz' %(CHROM)
 		
-		pop_list=read_sample(sample_file,args.pop)
-		print 'POP:',args.pop,len(pop_list)
-		pos_index,index_to_pos = read_1000G_legend(legend_file,snp_pos_list)
-		SNP=read_reference_SNP(SNP,haplotype_file,pop_list,pos_index,index_to_pos)
+		if args.phase=='hapmap':
+			haplotype_file = file2
+			SNP,snp_pos,reference=read_reference_SNP_v2(SNP,haplotype_file)
+		else:
+			pop_list=read_sample(sample_file,args.pop)
+			print 'POP:',args.pop,len(pop_list)
+			snp_pos_list = list(SNP.index)
+			pos_index,index_to_pos = read_1000G_legend(legend_file,snp_pos_list)
+			SNP,snp_pos,reference=read_reference_SNP(SNP,haplotype_file,pop_list,pos_index,index_to_pos)
+
+		SNP = SNP[SNP["reference"]==1]
+		print 'reference snp set',len(list(SNP.index)),len(snp_pos)
+
+#		assert list(SNP.index)==snp_pos
 
 		print 'finish load reference haplotypes, LD calulation'
 		# calculate genotype comparison, local MEC, local clone coverage for each SNP
-		SNP = calc_BLOCK_mec(BLOCK,block_list_new,SNP,flip,flip_array)
-
-		print 'finish MEC calculation'
-		dbfile = open('%s_%s_%s_%s_SNP_pickle' %(SAMPLE,CHROM,args.phase,args.phase_panel),'wb')
-		pickle.dump(SNP,dbfile)
-
+		if args.within_block=='1':
+#			Compare = calc_pairwise_LD_concordance_within_block(SNP,reference,snp_pos,flip_array)
+			if args.prism=='1':
+				abundance1,genotype_concordance1=calc_pairwise_LD_concordance_within_block_v2(SNP,reference,snp_pos,flip_array)
+			else:
+				abundance1,genotype_concordance1=calc_pairwise_LD_concordance_v2(SNP,reference,snp_pos,flip)
+			dbfile = open('%s_%s_%s_%s_SNP_pair_LD_within_block_pickle' %(SAMPLE,CHROM,args.phase,args.phase_panel),'wb')
+			print abundance1
+			print genotype_concordance1
+			pickle.dump(abundance1,dbfile)
+			pickle.dump(genotype_concordance1,dbfile)
+		else:
+			Compare1,Compare2 = calc_pairwise_LD_concordance(SNP,reference,snp_pos,flip,flip_array)
+			dbfile = open('%s_%s_%s_%s_SNP_pair_pickle' %(SAMPLE,CHROM,args.phase,args.phase_panel),'wb')
+			pickle.dump(Compare1,dbfile)
+			pickle.dump(Compare2,dbfile)
 		print CHROM, 'finished'
 	'''
 	dbfile = open('%s_%s_SNP_pickle' %(SAMPLE,CHROM),'rb')
