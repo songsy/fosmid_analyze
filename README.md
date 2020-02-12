@@ -1,5 +1,8 @@
 Analyze fosmid pool sequencing data, get physically phased haplotypes, run PSMC/MSMC
 ==============
+
+Scripts are for `Song S, Sliwerska E, Emery S, Kidd JM. Modeling human population separation history using physically phased genomes. Genetics. 2017 Jan 1;205(1):385-95.`
+
 ## Find clones
 Here are some scripts to discover clones, calculate clone statistics and do filtering
 
